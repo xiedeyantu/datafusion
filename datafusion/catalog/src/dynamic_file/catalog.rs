@@ -1,21 +1,6 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
 
-//! [`DynamicFileCatalog`] that creates tables from file paths
+
+//! [`DynamicFileCatalog`] 从文件路径创建表的目录提供程序
 
 use crate::{CatalogProvider, CatalogProviderList, SchemaProvider, TableProvider};
 use async_trait::async_trait;
@@ -23,12 +8,12 @@ use std::any::Any;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-/// Wrap another catalog provider list
+/// 包装另一个目录提供程序列表
 #[derive(Debug)]
 pub struct DynamicFileCatalog {
-    /// The inner catalog provider list
+    /// 内部目录提供程序列表
     inner: Arc<dyn CatalogProviderList>,
-    /// The factory that can create a table provider from the file path
+    /// 可以从文件路径创建表提供程序的工厂
     factory: Arc<dyn UrlTableFactory>,
 }
 
@@ -68,12 +53,12 @@ impl CatalogProviderList for DynamicFileCatalog {
     }
 }
 
-/// Wraps another catalog provider
+/// 包装另一个目录提供程序
 #[derive(Debug)]
 struct DynamicFileCatalogProvider {
-    /// The inner catalog provider
+    /// 内部目录提供程序
     inner: Arc<dyn CatalogProvider>,
-    /// The factory that can create a table provider from the file path
+    /// 可以从文件路径创建表提供程序的工厂
     factory: Arc<dyn UrlTableFactory>,
 }
 
@@ -113,20 +98,19 @@ impl CatalogProvider for DynamicFileCatalogProvider {
     }
 }
 
-/// Implements the [DynamicFileSchemaProvider] that can create tables provider from the file path.
+/// 实现[DynamicFileSchemaProvider]，它可以从文件路径创建表提供程序
 ///
-/// The provider will try to create a table provider from the file path if the table provider
-/// isn't exist in the inner schema provider.
+/// 如果内部模式提供程序中不存在表提供程序，提供程序将尝试从文件路径创建表提供程序
 #[derive(Debug)]
 pub struct DynamicFileSchemaProvider {
-    /// The inner schema provider
+    /// 内部模式提供程序
     inner: Arc<dyn SchemaProvider>,
-    /// The factory that can create a table provider from the file path
+    /// 可以从文件路径创建表提供程序的工厂
     factory: Arc<dyn UrlTableFactory>,
 }
 
 impl DynamicFileSchemaProvider {
-    /// Create a new [DynamicFileSchemaProvider] with the given inner schema provider.
+    /// 使用给定的内部模式提供程序创建一个新的[DynamicFileSchemaProvider]
     pub fn new(
         inner: Arc<dyn SchemaProvider>,
         factory: Arc<dyn UrlTableFactory>,
@@ -176,10 +160,10 @@ impl SchemaProvider for DynamicFileSchemaProvider {
     }
 }
 
-/// [UrlTableFactory] is a factory that can create a table provider from the given url.
+/// [UrlTableFactory]是一个可以从给定的url创建表提供程序的工厂
 #[async_trait]
 pub trait UrlTableFactory: Debug + Sync + Send {
-    /// create a new table provider from the provided url
+    /// 从提供的url创建一个新的表提供程序
     async fn try_new(
         &self,
         url: &str,

@@ -1,19 +1,4 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+
 
 use std::any::Any;
 use std::fmt::Debug;
@@ -23,80 +8,77 @@ pub use crate::schema::SchemaProvider;
 use datafusion_common::not_impl_err;
 use datafusion_common::Result;
 
-/// Represents a catalog, comprising a number of named schemas.
+/// 代表一个目录，包括多个命名的模式。
 ///
-/// # Catalog Overview
+/// # 目录概述
 ///
-/// To plan and execute queries, DataFusion needs a "Catalog" that provides
-/// metadata such as which schemas and tables exist, their columns and data
-/// types, and how to access the data.
+/// 为了计划和执行查询，DataFusion需要一个“目录”提供
+/// 元数据，如哪些模式和表存在，它们的列和数据
+/// 类型，以及如何访问数据。
 ///
-/// The Catalog API consists:
-/// * [`CatalogProviderList`]: a collection of `CatalogProvider`s
-/// * [`CatalogProvider`]: a collection of `SchemaProvider`s (sometimes called a "database" in other systems)
-/// * [`SchemaProvider`]:  a collection of `TableProvider`s (often called a "schema" in other systems)
-/// * [`TableProvider`]:  individual tables
+/// 目录API由以下部分组成：
+/// * [`CatalogProviderList`]: 一组`CatalogProvider`s的集合
+/// * [`CatalogProvider`]: 一组`SchemaProvider`s的集合（有时称为“数据库”）
+/// * [`SchemaProvider`]: 一组`TableProvider`s的集合（经常称为“模式”）
+/// * [`TableProvider`]: 单个表
 ///
-/// # Implementing Catalogs
+/// # 实现目录
 ///
-/// To implement a catalog, you implement at least one of the [`CatalogProviderList`],
-/// [`CatalogProvider`] and [`SchemaProvider`] traits and register them
-/// appropriately in the `SessionContext`.
+/// 要实现一个目录，您至少需要实现以下之一的[`CatalogProviderList`],
+/// [`CatalogProvider`]和[`SchemaProvider`]特征，并在`SessionContext`中
+/// 适当地注册它们。
 ///
-/// DataFusion comes with a simple in-memory catalog implementation,
-/// `MemoryCatalogProvider`, that is used by default and has no persistence.
-/// DataFusion does not include more complex Catalog implementations because
-/// catalog management is a key design choice for most data systems, and thus
-/// it is unlikely that any general-purpose catalog implementation will work
-/// well across many use cases.
+/// DataFusion带有一个简单的内存目录实现，
+/// `MemoryCatalogProvider`,它是默认使用的，并且没有持久性。
+/// DataFusion不包括更复杂的目录实现，因为
+/// 目录管理是大多数数据系统的关键设计选择，因此
+/// 它不太可能有一个通用的目录实现能够在多种用例中工作。
 ///
-/// # Implementing "Remote" catalogs
+/// # 实现“远程”目录
 ///
-/// See [`remote_catalog`] for an end to end example of how to implement a
-/// remote catalog.
+/// 请参见[`remote_catalog`]了解如何实现一个
+/// 远程目录的端到端示例。
 ///
-/// Sometimes catalog information is stored remotely and requires a network call
-/// to retrieve. For example, the [Delta Lake] table format stores table
-/// metadata in files on S3 that must be first downloaded to discover what
-/// schemas and tables exist.
+/// 有时目录信息存储在远程位置，需要网络调用
+/// 来检索。例如，[Delta Lake]表格式将表
+/// 元数据存储在S3上的文件中，必须首先下载以发现
+/// 哪些模式和表存在。
 ///
 /// [Delta Lake]: https://delta.io/
 /// [`remote_catalog`]: https://github.com/apache/datafusion/blob/main/datafusion-examples/examples/remote_catalog.rs
 ///
-/// The [`CatalogProvider`] can support this use case, but it takes some care.
-/// The planning APIs in DataFusion are not `async` and thus network IO can not
-/// be performed "lazily" / "on demand" during query planning. The rationale for
-/// this design is that using remote procedure calls for all catalog accesses
-/// required for query planning would likely result in multiple network calls
-/// per plan, resulting in very poor planning performance.
+/// [`CatalogProvider`]可以支持这种用例，但需要一些注意。
+/// DataFusion的规划API不是异步的，因此网络IO不能
+/// 在查询规划期间“惰性”/“按需”执行。这种设计的理由是
+/// 使用远程过程调用来访问所有目录信息
+/// 都需要在查询规划期间，这可能会导致每个计划
+/// 多次网络调用，结果是规划性能非常差。
 ///
-/// To implement [`CatalogProvider`] and [`SchemaProvider`] for remote catalogs,
-/// you need to provide an in memory snapshot of the required metadata. Most
-/// systems typically either already have this information cached locally or can
-/// batch access to the remote catalog to retrieve multiple schemas and tables
-/// in a single network call.
+/// 要实现[`CatalogProvider`]和[`SchemaProvider`]用于远程目录，
+/// 您需要提供内存中的快照，包括所需的元数据。多
+/// 数系统通常已经缓存了这些信息，或者可以
+/// 批量访问远程目录，以检索多个模式和表
+/// 在单个网络调用中。
 ///
-/// Note that [`SchemaProvider::table`] **is** an `async` function in order to
-/// simplify implementing simple [`SchemaProvider`]s. For many table formats it
-/// is easy to list all available tables but there is additional non trivial
-/// access required to read table details (e.g. statistics).
+/// 注意，[`SchemaProvider::table`]是一个异步函数，以简化
+/// 实现简单的[`SchemaProvider`]。对于许多表格式，列出所有可用的表
+/// 很容易，但需要额外的非平凡访问来读取表详细信息（例如统计信息）。
 ///
-/// The pattern that DataFusion itself uses to plan SQL queries is to walk over
-/// the query to find all table references, performing required remote catalog
-/// lookups in parallel, storing the results in a cached snapshot, and then plans
-/// the query using that snapshot.
+/// DataFusion自己用于计划SQL查询的模式是遍历查询以找到所有表引用，执行
+/// 所需的远程目录查找，并将结果存储在缓存的快照中，然后使用该快照
+/// 计划查询。
 ///
-/// # Example Catalog Implementations
+/// # 示例目录实现
 ///
-/// Here are some examples of how to implement custom catalogs:
+/// 这里有一些如何实现自定义目录的示例：
 ///
-/// * [`datafusion-cli`]: [`DynamicFileCatalogProvider`] catalog provider
-///   that treats files and directories on a filesystem as tables.
+/// * [`datafusion-cli`]: [`DynamicFileCatalogProvider`]目录提供者
+///   将文件系统上的文件和目录视为表。
 ///
-/// * The [`catalog.rs`]:  a simple directory based catalog.
+/// * 这个[`catalog.rs`]: 一个简单的基于目录的目录。
 ///
-/// * [delta-rs]:  [`UnityCatalogProvider`] implementation that can
-///   read from Delta Lake tables
+/// * [delta-rs]:  [`UnityCatalogProvider`]实现，可以
+///   从Delta Lake表中读取
 ///
 /// [`datafusion-cli`]: https://datafusion.apache.org/user-guide/cli/index.html
 /// [`DynamicFileCatalogProvider`]: https://github.com/apache/datafusion/blob/31b9b48b08592b7d293f46e75707aad7dadd7cbc/datafusion-cli/src/catalog.rs#L75
@@ -106,43 +88,41 @@ use datafusion_common::Result;
 ///
 /// [`TableProvider`]: crate::TableProvider
 pub trait CatalogProvider: Debug + Sync + Send {
-    /// Returns the catalog provider as [`Any`]
-    /// so that it can be downcast to a specific implementation.
+    /// 返回目录提供者作为[`Any`]
+    /// 以便可以将其向下转换为特定实现。
     fn as_any(&self) -> &dyn Any;
 
-    /// Retrieves the list of available schema names in this catalog.
+    /// 检索此目录中可用的模式名称列表。
     fn schema_names(&self) -> Vec<String>;
 
-    /// Retrieves a specific schema from the catalog by name, provided it exists.
+    /// 根据名称检索特定的模式，如果存在。
     fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>>;
 
-    /// Adds a new schema to this catalog.
+    /// 向此目录添加一个新模式。
     ///
-    /// If a schema of the same name existed before, it is replaced in
-    /// the catalog and returned.
+    /// 如果同名的模式存在于之前，它将在目录中被替换并返回。
     ///
-    /// By default returns a "Not Implemented" error
+    /// 默认返回一个“未实现”错误
     fn register_schema(
         &self,
         name: &str,
         schema: Arc<dyn SchemaProvider>,
     ) -> Result<Option<Arc<dyn SchemaProvider>>> {
-        // use variables to avoid unused variable warnings
+        // 使用变量以避免未使用变量的警告
         let _ = name;
         let _ = schema;
         not_impl_err!("Registering new schemas is not supported")
     }
 
-    /// Removes a schema from this catalog. Implementations of this method should return
-    /// errors if the schema exists but cannot be dropped. For example, in DataFusion's
-    /// default in-memory catalog, `MemoryCatalogProvider`, a non-empty schema
-    /// will only be successfully dropped when `cascade` is true.
-    /// This is equivalent to how DROP SCHEMA works in PostgreSQL.
+    /// 从此目录中删除一个模式。实现此方法的方法应该返回
+    /// 错误，如果模式存在但不能被删除。例如，在DataFusion的
+    /// 默认内存目录中，`MemoryCatalogProvider`，只有当`cascade`为真时
+    /// 才能成功删除非空模式。
+    /// 这与PostgreSQL中的DROP SCHEMA操作类似。
     ///
-    /// Implementations of this method should return None if schema with `name`
-    /// does not exist.
+    /// 实现此方法的方法应该返回None，如果`name`指定的模式不存在。
     ///
-    /// By default returns a "Not Implemented" error
+    /// 默认返回一个“未实现”错误
     fn deregister_schema(
         &self,
         _name: &str,
@@ -152,26 +132,25 @@ pub trait CatalogProvider: Debug + Sync + Send {
     }
 }
 
-/// Represent a list of named [`CatalogProvider`]s.
+/// 代表一组命名的[`CatalogProvider`]。
 ///
-/// Please see the documentation on [`CatalogProvider`] for details of
-/// implementing a custom catalog.
+/// 请参见[`CatalogProvider`]的文档了解实现自定义目录的详细信息。
 pub trait CatalogProviderList: Debug + Sync + Send {
-    /// Returns the catalog list as [`Any`]
-    /// so that it can be downcast to a specific implementation.
+    /// 返回目录列表作为[`Any`]
+    /// 以便可以将其向下转换为特定实现。
     fn as_any(&self) -> &dyn Any;
 
-    /// Adds a new catalog to this catalog list
-    /// If a catalog of the same name existed before, it is replaced in the list and returned.
+    /// 向此目录列表添加一个新目录
+    /// 如果同名的目录存在于之前，它将在列表中被替换并返回。
     fn register_catalog(
         &self,
         name: String,
         catalog: Arc<dyn CatalogProvider>,
     ) -> Option<Arc<dyn CatalogProvider>>;
 
-    /// Retrieves the list of available catalog names
+    /// 检索可用的目录名称列表。
     fn catalog_names(&self) -> Vec<String>;
 
-    /// Retrieves a specific catalog by name, provided it exists.
+    /// 根据名称检索特定的目录，如果存在。
     fn catalog(&self, name: &str) -> Option<Arc<dyn CatalogProvider>>;
 }

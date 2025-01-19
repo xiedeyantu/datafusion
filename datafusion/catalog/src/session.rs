@@ -1,20 +1,3 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-
 use async_trait::async_trait;
 use datafusion_common::config::ConfigOptions;
 use datafusion_common::{DFSchema, Result};
@@ -29,33 +12,24 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
 
-/// Interface for accessing [`SessionState`] from the catalog.
+/// 定义了从目录访问[`SessionState`]的接口。
 ///
-/// This trait provides access to the information needed to plan and execute
-/// queries, such as configuration, functions, and runtime environment. See the
-/// documentation on [`SessionState`] for more information.
+/// 这个特征提供了计划和执行查询所需的信息，例如配置、函数和运行时环境。请参见[`SessionState`]的文档了解更多信息。
 ///
-/// Historically, the `SessionState` struct was passed directly to catalog
-/// traits such as [`TableProvider`], which required a direct dependency on the
-/// DataFusion core. The interface required is now defined by this trait. See
-/// [#10782] for more details.
+/// 历史上，`SessionState`结构直接传递给目录特征，如[`TableProvider`],这需要对DataFusion核心的直接依赖。现在，这个接口是通过这个特征定义的。请参见[#10782]了解更多细节。
 ///
 /// [#10782]: https://github.com/apache/datafusion/issues/10782
 ///
-/// # Migration from `SessionState`
+/// # 从`SessionState`迁移
 ///
-/// Using trait methods is preferred, as the implementation may change in future
-/// versions. However, you can downcast a `Session` to a `SessionState` as shown
-/// in the example below. If you find yourself needing to do this, please open
-/// an issue on the DataFusion repository so we can extend the trait to provide
-/// the required information.
+/// 使用特征方法是首选的，因为实现可能会在未来版本中更改。然而，你可以将`Session`向下转换为`SessionState`，如下所示。如果你发现自己需要这样做，请在DataFusion存储库中打开一个问题，我们可以扩展特征以提供所需的信息。
 ///
 /// ```
 /// # use datafusion_catalog::Session;
 /// # use datafusion_common::{Result, exec_datafusion_err};
 /// # struct SessionState {}
-/// // Given a `Session` reference, get the concrete `SessionState` reference
-/// // Note: this may stop working in future versions,
+/// // 给定一个`Session`引用，获取具体的`SessionState`引用
+/// // 注意：这可能会在未来版本中停止工作，
 /// fn session_state_from_session(session: &dyn Session) -> Result<&SessionState> {
 ///    session.as_any()
 ///     .downcast_ref::<SessionState>()
@@ -67,35 +41,30 @@ use std::sync::{Arc, Weak};
 /// [`TableProvider`]: crate::TableProvider
 #[async_trait]
 pub trait Session: Send + Sync {
-    /// Return the session ID
+    /// 返回会话ID
     fn session_id(&self) -> &str;
 
-    /// Return the [`SessionConfig`]
+    /// 返回[`SessionConfig`]
     fn config(&self) -> &SessionConfig;
 
-    /// return the [`ConfigOptions`]
+    /// 返回[`ConfigOptions`]
     fn config_options(&self) -> &ConfigOptions {
         self.config().options()
     }
 
-    /// Creates a physical [`ExecutionPlan`] plan from a [`LogicalPlan`].
+    /// 从[`LogicalPlan`]创建物理[`ExecutionPlan`]计划。
     ///
-    /// Note: this will optimize the provided plan first.
+    /// 注意：这将首先优化提供的计划。
     ///
-    /// This function will error for [`LogicalPlan`]s such as catalog DDL like
-    /// `CREATE TABLE`, which do not have corresponding physical plans and must
-    /// be handled by another layer, typically the `SessionContext`.
+    /// 这个函数将为[`LogicalPlan`]s错误，如目录DDL像`CREATE TABLE`，它们没有相应的物理计划，必须由另一个层处理，通常是`SessionContext`。
     async fn create_physical_plan(
         &self,
         logical_plan: &LogicalPlan,
     ) -> Result<Arc<dyn ExecutionPlan>>;
 
-    /// Create a [`PhysicalExpr`] from an [`Expr`] after applying type
-    /// coercion, and function rewrites.
+    /// 从[`Expr`]创建物理[`PhysicalExpr`],应用类型强制转换和函数重写。
     ///
-    /// Note: The expression is not simplified or otherwise optimized:  `a = 1
-    /// + 2` will not be simplified to `a = 3` as this is a more involved process.
-    /// See the [expr_api] example for how to simplify expressions.
+    /// 注意：表达式不会被简化或优化：`a = 1 + 2`不会被简化为`a = 3`，这是一个更复杂的过程。请参见[expr_api]示例了解如何简化表达式。
     ///
     /// [expr_api]: https://github.com/apache/datafusion/blob/main/datafusion-examples/examples/expr_api.rs
     fn create_physical_expr(
@@ -104,25 +73,25 @@ pub trait Session: Send + Sync {
         df_schema: &DFSchema,
     ) -> Result<Arc<dyn PhysicalExpr>>;
 
-    /// Return reference to scalar_functions
+    /// 返回scalar_functions的引用
     fn scalar_functions(&self) -> &HashMap<String, Arc<ScalarUDF>>;
 
-    /// Return reference to aggregate_functions
+    /// 返回aggregate_functions的引用
     fn aggregate_functions(&self) -> &HashMap<String, Arc<AggregateUDF>>;
 
-    /// Return reference to window functions
+    /// 返回window_functions的引用
     fn window_functions(&self) -> &HashMap<String, Arc<WindowUDF>>;
 
-    /// Return the runtime env
+    /// 返回运行时环境
     fn runtime_env(&self) -> &Arc<RuntimeEnv>;
 
-    /// Return the execution properties
+    /// 返回执行属性
     fn execution_props(&self) -> &ExecutionProps;
 
     fn as_any(&self) -> &dyn Any;
 }
 
-/// Create a new task context instance from Session
+/// 从`Session`创建新的任务上下文实例
 impl From<&dyn Session> for TaskContext {
     fn from(state: &dyn Session) -> Self {
         let task_id = None;
@@ -138,27 +107,27 @@ impl From<&dyn Session> for TaskContext {
     }
 }
 type SessionRefLock = Arc<Mutex<Option<Weak<RwLock<dyn Session>>>>>;
-/// The state store that stores the reference of the runtime session state.
+/// 存储运行时会话状态引用的状态存储。
 #[derive(Debug)]
 pub struct SessionStore {
     session: SessionRefLock,
 }
 
 impl SessionStore {
-    /// Create a new [SessionStore]
+    /// 创建一个新的[SessionStore]
     pub fn new() -> Self {
         Self {
             session: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Set the session state of the store
+    /// 设置存储的会话状态
     pub fn with_state(&self, state: Weak<RwLock<dyn Session>>) {
         let mut lock = self.session.lock();
         *lock = Some(state);
     }
 
-    /// Get the current session of the store
+    /// 获取存储的当前会话
     pub fn get_session(&self) -> Weak<RwLock<dyn Session>> {
         self.session.lock().clone().unwrap()
     }

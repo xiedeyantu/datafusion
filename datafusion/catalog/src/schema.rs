@@ -1,22 +1,4 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
-
-//! Describes the interface and built-in implementations of schemas,
-//! representing collections of named tables.
+//! 描述了模式的接口和内置实现，表示一组命名的表的集合。
 
 use async_trait::async_trait;
 use datafusion_common::{exec_err, DataFusionError};
@@ -27,38 +9,34 @@ use std::sync::Arc;
 use crate::table::TableProvider;
 use datafusion_common::Result;
 
-/// Represents a schema, comprising a number of named tables.
+/// 代表一个模式，包括多个命名的表。
 ///
-/// Please see [`CatalogProvider`] for details of implementing a custom catalog.
+/// 请参见[`CatalogProvider`]了解如何实现自定义目录。
 ///
 /// [`CatalogProvider`]: super::CatalogProvider
 #[async_trait]
 pub trait SchemaProvider: Debug + Sync + Send {
-    /// Returns the owner of the Schema, default is None. This value is reported
-    /// as part of `information_tables.schemata
+    /// 返回模式的所有者名称，默认为None。这个值将作为
+    /// `information_tables.schemata`的一部分报告。
     fn owner_name(&self) -> Option<&str> {
         None
     }
 
-    /// Returns this `SchemaProvider` as [`Any`] so that it can be downcast to a
-    /// specific implementation.
+    /// 返回这个`SchemaProvider`作为[`Any`],以便可以将其向下转换为特定实现。
     fn as_any(&self) -> &dyn Any;
 
-    /// Retrieves the list of available table names in this schema.
+    /// 检索这个模式中可用的表名列表。
     fn table_names(&self) -> Vec<String>;
 
-    /// Retrieves a specific table from the schema by name, if it exists,
-    /// otherwise returns `None`.
+    /// 根据名称从模式中检索特定的表，如果存在，则返回。
     async fn table(
         &self,
         name: &str,
     ) -> Result<Option<Arc<dyn TableProvider>>, DataFusionError>;
 
-    /// If supported by the implementation, adds a new table named `name` to
-    /// this schema.
+    /// 如果实现支持，向这个模式添加一个名为`name`的新表。
     ///
-    /// If a table of the same name was already registered, returns "Table
-    /// already exists" error.
+    /// 如果已经注册了同名的表，返回"表已存在"错误。
     #[allow(unused_variables)]
     fn register_table(
         &self,
@@ -68,15 +46,14 @@ pub trait SchemaProvider: Debug + Sync + Send {
         exec_err!("schema provider does not support registering tables")
     }
 
-    /// If supported by the implementation, removes the `name` table from this
-    /// schema and returns the previously registered [`TableProvider`], if any.
+    /// 如果实现支持，从这个模式中移除名为`name`的表，并返回之前注册的[`TableProvider`],如果有。
     ///
-    /// If no `name` table exists, returns Ok(None).
+    /// 如果不存在`name`表，返回Ok(None)。
     #[allow(unused_variables)]
     fn deregister_table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>> {
         exec_err!("schema provider does not support deregistering tables")
     }
 
-    /// Returns true if table exist in the schema provider, false otherwise.
+    /// 如果表在模式提供者中存在，返回true，否则返回false。
     fn table_exist(&self, name: &str) -> bool;
 }

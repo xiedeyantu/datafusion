@@ -1,19 +1,4 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
-//
-//   http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+
 
 use std::any::Any;
 use std::borrow::Cow;
@@ -33,98 +18,79 @@ use datafusion_expr::{
 };
 use datafusion_physical_plan::ExecutionPlan;
 
-/// A named table which can be queried.
+/// 定义了一个可以被查询的命名表。
 ///
-/// Please see [`CatalogProvider`] for details of implementing a custom catalog.
+/// 请参见[`CatalogProvider`]了解如何实现一个自定义的目录。
 ///
-/// [`TableProvider`] represents a source of data which can provide data as
-/// Apache Arrow `RecordBatch`es. Implementations of this trait provide
-/// important information for planning such as:
+/// [`TableProvider`]代表了一个数据源，可以提供数据作为
+/// Apache Arrow `RecordBatch`es。实现这个特征的类提供了
+/// 计划所需的重要信息，例如：
 ///
-/// 1. [`Self::schema`]: The schema (columns and their types) of the table
-/// 2. [`Self::supports_filters_pushdown`]: Should filters be pushed into this scan
-/// 2. [`Self::scan`]: An [`ExecutionPlan`] that can read data
+/// 1. [`Self::schema`]: 表的模式（列和它们的类型）
+/// 2. [`Self::supports_filters_pushdown`]: 应该将过滤器推入到这个扫描中吗
+/// 3. [`Self::scan`]: 一个可以读取数据的[`ExecutionPlan`]
 ///
 /// [`CatalogProvider`]: super::CatalogProvider
 #[async_trait]
 pub trait TableProvider: Debug + Sync + Send {
-    /// Returns the table provider as [`Any`](std::any::Any) so that it can be
-    /// downcast to a specific implementation.
+    /// 返回表提供者作为[`Any`](std::any::Any)，这样它可以被转换为特定的实现。
     fn as_any(&self) -> &dyn Any;
 
-    /// Get a reference to the schema for this table
+    /// 获取这个表的模式引用。
     fn schema(&self) -> SchemaRef;
 
-    /// Get a reference to the constraints of the table.
-    /// Returns:
-    /// - `None` for tables that do not support constraints.
-    /// - `Some(&Constraints)` for tables supporting constraints.
-    /// Therefore, a `Some(&Constraints::empty())` return value indicates that
-    /// this table supports constraints, but there are no constraints.
+    /// 获取表的约束引用。
+    /// 返回：
+    /// - `None`，对于不支持约束的表。
+    /// - `Some(&Constraints)`，对于支持约束的表。
+    /// 因此，一个`Some(&Constraints::empty())`的返回值表明这个表支持约束，但没有约束。
     fn constraints(&self) -> Option<&Constraints> {
         None
     }
 
-    /// Get the type of this table for metadata/catalog purposes.
+    /// 获取这个表的类型，用于元数据/目录目的。
     fn table_type(&self) -> TableType;
 
-    /// Get the create statement used to create this table, if available.
+    /// 获取用于创建这个表的创建语句，如果有的话。
     fn get_table_definition(&self) -> Option<&str> {
         None
     }
 
-    /// Get the [`LogicalPlan`] of this table, if available.
+    /// 获取这个表的[`LogicalPlan`], 如果有的话。
     fn get_logical_plan(&self) -> Option<Cow<LogicalPlan>> {
         None
     }
 
-    /// Get the default value for a column, if available.
+    /// 获取列的默认值，如果有的话。
     fn get_column_default(&self, _column: &str) -> Option<&Expr> {
         None
     }
 
-    /// Create an [`ExecutionPlan`] for scanning the table with optionally
-    /// specified `projection`, `filter` and `limit`, described below.
+    /// 创建一个用于扫描表的[`ExecutionPlan`], 可选地指定了`projection`, `filter`和`limit`，如下所述。
     ///
-    /// The `ExecutionPlan` is responsible scanning the datasource's
-    /// partitions in a streaming, parallelized fashion.
+    /// [`ExecutionPlan`]负责以流式、并行的方式扫描数据源的分区。
     ///
     /// # Projection
     ///
-    /// If specified, only a subset of columns should be returned, in the order
-    /// specified. The projection is a set of indexes of the fields in
-    /// [`Self::schema`].
+    /// 如果指定了，应该只返回一部分列，在指定的顺序中。
+    /// 投影是一个字段在[`Self::schema`]中的索引集。
     ///
-    /// DataFusion provides the projection to scan only the columns actually
-    /// used in the query to improve performance, an optimization  called
-    /// "Projection Pushdown". Some datasources, such as Parquet, can use this
-    /// information to go significantly faster when only a subset of columns is
-    /// required.
+    /// DataFusion提供了投影，以便只扫描实际用于查询的列，提高性能，这是一个名为“投影下推”的优化。一些数据源，如Parquet，可以使用这个信息来大幅提高性能，仅当需要一部分列时。
     ///
     /// # Filters
     ///
-    /// A list of boolean filter [`Expr`]s to evaluate *during* the scan, in the
-    /// manner specified by [`Self::supports_filters_pushdown`]. Only rows for
-    /// which *all* of the `Expr`s evaluate to `true` must be returned (aka the
-    /// expressions are `AND`ed together).
+    /// 一个布尔过滤器[`Expr`]列表，用于在扫描期间评估，方式如下所述。只有当所有`Expr`都评估为`true`的行必须被返回（即表达式是`AND`连接的）。
     ///
-    /// To enable filter pushdown you must override
-    /// [`Self::supports_filters_pushdown`] as the default implementation does
-    /// not and `filters` will be empty.
+    /// 要启用过滤器下推，你必须重写
+    /// [`Self::supports_filters_pushdown`],因为默认实现不支持，并且`filters`将为空。
     ///
-    /// DataFusion pushes filtering into the scans whenever possible
-    /// ("Filter Pushdown"), and depending on the format and the
-    /// implementation of the format, evaluating the predicate during the scan
-    /// can increase performance significantly.
+    /// DataFusion尽可能地将过滤器推入到扫描中（“过滤器下推”），这取决于格式和格式的实现，评估谓词可以大幅提高性能。
     ///
-    /// ## Note: Some columns may appear *only* in Filters
+    /// ## 注意：一些列可能只出现在过滤器中
     ///
-    /// In certain cases, a query may only use a certain column in a Filter that
-    /// has been completely pushed down to the scan. In this case, the
-    /// projection will not contain all the columns found in the filter
-    /// expressions.
+    /// 在某些情况下，查询可能只在过滤器中使用某个列，这个过滤器已经完全推入到扫描中去了。在这种情况下，投影将不包含过滤器表达式中的所有列。
     ///
-    /// For example, given the query `SELECT t.a FROM t WHERE t.b > 5`,
+    /// 例如，给定查询`SELECT t.a FROM t WHERE t.b > 5`,
     ///
     /// ```text
     /// ┌────────────────────┐
@@ -144,24 +110,16 @@ pub trait TableProvider: Debug + Sync + Send {
     /// └────────────────────┘                │  filter=(t.b > 5)  │                 │  projection=(t.a)  │
     ///                                       └────────────────────┘                 └────────────────────┘
     ///
-    /// Initial Plan                  If `TableProviderFilterPushDown`           Projection pushdown notes that
-    ///                               returns true, filter pushdown              the scan only needs t.a
-    ///                               pushes the filter into the scan
-    ///                                                                          BUT internally evaluating the
-    ///                                                                          predicate still requires t.b
+    /// 初始计划                  如果`TableProviderFilterPushDown`           投影下推注意到
+    ///                               返回true，过滤器下推              扫描只需要t.a
+    ///                               将过滤器推入到扫描中              但内部评估谓词仍然需要t.b
     /// ```
     ///
     /// # Limit
     ///
-    /// If `limit` is specified,  must only produce *at least* this many rows,
-    /// (though it may return more).  Like Projection Pushdown and Filter
-    /// Pushdown, DataFusion pushes `LIMIT`s  as far down in the plan as
-    /// possible, called "Limit Pushdown" as some sources can use this
-    /// information to improve their performance. Note that if there are any
-    /// Inexact filters pushed down, the LIMIT cannot be pushed down. This is
-    /// because inexact filters do not guarantee that every filtered row is
-    /// removed, so applying the limit could lead to too few rows being available
-    /// to return as a final result.
+    /// 如果指定了`limit`, 必须至少产生这么多行，
+    /// (虽然可能返回更多)。像投影下推和过滤器下推一样，DataFusion推送`LIMIT`s
+    /// 到计划中尽可能远的地方，称为“限制下推”。一些源可以使用这个信息来提高性能。注意，如果有任何不精确的过滤器被推入，限制不能被推入。这是因为不精确的过滤器不保证每个过滤的行都被移除，所以应用限制可能会导致返回的行太少。
     async fn scan(
         &self,
         state: &dyn Session,
@@ -170,34 +128,26 @@ pub trait TableProvider: Debug + Sync + Send {
         limit: Option<usize>,
     ) -> Result<Arc<dyn ExecutionPlan>>;
 
-    /// Specify if DataFusion should provide filter expressions to the
-    /// TableProvider to apply *during* the scan.
+    /// 指定DataFusion是否应该为TableProvider提供过滤器表达式，以便在扫描期间应用。
     ///
-    /// Some TableProviders can evaluate filters more efficiently than the
-    /// `Filter` operator in DataFusion, for example by using an index.
+    /// 一些TableProvider可以比DataFusion的`Filter`操作符更有效地评估过滤器，例如使用索引。
     ///
-    /// # Parameters and Return Value
+    /// # 参数和返回值
     ///
-    /// The return `Vec` must have one element for each element of the `filters`
-    /// argument. The value of each element indicates if the TableProvider can
-    /// apply the corresponding filter during the scan. The position in the return
-    /// value corresponds to the expression in the `filters` parameter.
+    /// 返回的`Vec`必须有一个元素，对应于`filters`参数中的每个元素。每个元素的值表明TableProvider是否可以在扫描期间应用对应的过滤器。返回值中的位置对应于`filters`参数中的表达式。
     ///
-    /// If the length of the resulting `Vec` does not match the `filters` input
-    /// an error will be thrown.
+    /// 如果返回的`Vec`的长度不匹配`filters`输入，会抛出错误。
     ///
-    /// Each element in the resulting `Vec` is one of the following:
-    /// * [`Exact`] or [`Inexact`]: The TableProvider can apply the filter
-    /// during scan
-    /// * [`Unsupported`]: The TableProvider cannot apply the filter during scan
+    /// 返回的`Vec`中的每个元素是以下之一：
+    /// * [`Exact`] 或 [`Inexact`]: TableProvider可以在扫描期间应用过滤器
+    /// * [`Unsupported`]: TableProvider不能在扫描期间应用过滤器
     ///
-    /// By default, this function returns [`Unsupported`] for all filters,
-    /// meaning no filters will be provided to [`Self::scan`].
+    /// 默认情况下，这个函数返回[`Unsupported`]，对于所有过滤器，意味着不会为[`Self::scan`]提供过滤器。
     ///
     /// [`Unsupported`]: TableProviderFilterPushDown::Unsupported
     /// [`Exact`]: TableProviderFilterPushDown::Exact
     /// [`Inexact`]: TableProviderFilterPushDown::Inexact
-    /// # Example
+    /// # 示例
     ///
     /// ```rust
     /// # use std::any::Any;
@@ -208,7 +158,7 @@ pub trait TableProvider: Debug + Sync + Send {
     /// # use datafusion_common::Result;
     /// # use datafusion_expr::{Expr, TableProviderFilterPushDown, TableType};
     /// # use datafusion_physical_plan::ExecutionPlan;
-    /// // Define a struct that implements the TableProvider trait
+    /// // 定义一个实现了TableProvider特征的结构体
     /// #[derive(Debug)]
     /// struct TestDataSource {}
     ///
@@ -220,13 +170,12 @@ pub trait TableProvider: Debug + Sync + Send {
     /// # async fn scan(&self, s: &dyn Session, p: Option<&Vec<usize>>, f: &[Expr], l: Option<usize>) -> Result<Arc<dyn ExecutionPlan>> {
     ///         todo!()
     /// # }
-    ///     // Override the supports_filters_pushdown to evaluate which expressions
-    ///     // to accept as pushdown predicates.
+    ///     // 重写supports_filters_pushdown以评估哪些表达式作为推入的谓词。
     ///     fn supports_filters_pushdown(&self, filters: &[&Expr]) -> Result<Vec<TableProviderFilterPushDown>> {
-    ///         // Process each filter
+    ///         // 处理每个过滤器
     ///         let support: Vec<_> = filters.iter().map(|expr| {
     ///           match expr {
-    ///             // This example only supports a between expr with a single column named "c1".
+    ///             // 这个例子只支持一个名为"c1"的列的between expr。
     ///             Expr::Between(between_expr) => {
     ///                 between_expr.expr
     ///                 .try_as_col()
@@ -237,11 +186,11 @@ pub trait TableProvider: Debug + Sync + Send {
     ///                         TableProviderFilterPushDown::Unsupported
     ///                     }
     ///                 })
-    ///                 // If there is no column in the expr set the filter to unsupported.
+    ///                 // 如果expr中没有列，设置过滤器为Unsupported。
     ///                 .unwrap_or(TableProviderFilterPushDown::Unsupported)
     ///             }
     ///             _ => {
-    ///                 // For all other cases return Unsupported.
+    ///                 // 对于所有其他情况，返回Unsupported。
     ///                 TableProviderFilterPushDown::Unsupported
     ///             }
     ///         }
@@ -260,19 +209,17 @@ pub trait TableProvider: Debug + Sync + Send {
         ])
     }
 
-    /// Get statistics for this table, if available
-    /// Although not presently used in mainline DataFusion, this allows implementation specific
-    /// behavior for downstream repositories, in conjunction with specialized optimizer rules to
-    /// perform operations such as re-ordering of joins.
+    /// 获取此表的统计信息，如果有的话
+    /// 尽管在DataFusion的主线中没有被使用，但这允许特定于实现的行为
+    /// 对于下游存储库，结合特定的优化器规则，可以执行操作
+    /// 例如重新排序连接。
     fn statistics(&self) -> Option<Statistics> {
         None
     }
 
-    /// Return an [`ExecutionPlan`] to insert data into this table, if
-    /// supported.
+    /// 返回一个用于将数据插入到此表中的[`ExecutionPlan`],如果支持。
     ///
-    /// The returned plan should return a single row in a UInt64
-    /// column called "count" such as the following
+    /// 返回的计划应该返回一个单行，包含一个名为"count"的UInt64列，例如：
     ///
     /// ```text
     /// +-------+,
@@ -282,10 +229,9 @@ pub trait TableProvider: Debug + Sync + Send {
     /// +-------+,
     /// ```
     ///
-    /// # See Also
+    /// # 另见
     ///
-    /// See [`DataSinkExec`] for the common pattern of inserting a
-    /// streams of `RecordBatch`es as files to an ObjectStore.
+    /// 另见[`DataSinkExec`]，了解如何将流的`RecordBatch`es作为文件插入到ObjectStore的通用模式。
     ///
     /// [`DataSinkExec`]: datafusion_physical_plan::insert::DataSinkExec
     async fn insert_into(
@@ -298,13 +244,12 @@ pub trait TableProvider: Debug + Sync + Send {
     }
 }
 
-/// A factory which creates [`TableProvider`]s at runtime given a URL.
+/// 创建[`TableProvider`]的工厂，根据URL在运行时生成。
 ///
-/// For example, this can be used to create a table "on the fly"
-/// from a directory of files only when that name is referenced.
+/// 例如，这可以用于根据名称引用时，从目录中的文件创建一个“即时”表。
 #[async_trait]
 pub trait TableProviderFactory: Debug + Sync + Send {
-    /// Create a TableProvider with the given url
+    /// 使用给定的URL创建一个TableProvider
     async fn create(
         &self,
         state: &dyn Session,
@@ -312,38 +257,38 @@ pub trait TableProviderFactory: Debug + Sync + Send {
     ) -> Result<Arc<dyn TableProvider>>;
 }
 
-/// A trait for table function implementations
+/// 表函数实现的特征
 pub trait TableFunctionImpl: Debug + Sync + Send {
-    /// Create a table provider
+    /// 创建一个表提供者
     fn call(&self, args: &[Expr]) -> Result<Arc<dyn TableProvider>>;
 }
 
-/// A table that uses a function to generate data
+/// 使用函数生成数据的表
 #[derive(Debug)]
 pub struct TableFunction {
-    /// Name of the table function
+    /// 表函数的名称
     name: String,
-    /// Function implementation
+    /// 函数实现
     fun: Arc<dyn TableFunctionImpl>,
 }
 
 impl TableFunction {
-    /// Create a new table function
+    /// 创建一个新的表函数
     pub fn new(name: String, fun: Arc<dyn TableFunctionImpl>) -> Self {
         Self { name, fun }
     }
 
-    /// Get the name of the table function
+    /// 获取表函数的名称
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Get the implementation of the table function
+    /// 获取表函数的实现
     pub fn function(&self) -> &Arc<dyn TableFunctionImpl> {
         &self.fun
     }
 
-    /// Get the function implementation and generate a table
+    /// 获取函数实现并生成一个表
     pub fn create_table_provider(&self, args: &[Expr]) -> Result<Arc<dyn TableProvider>> {
         self.fun.call(args)
     }

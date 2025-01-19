@@ -1,19 +1,16 @@
-// Licensed to the Apache Software Foundation (ASF) under one
-// or more contributor license agreements.  See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership.  The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License.  You may obtain a copy of the License at
+// 根据一个或多个贡献者许可协议，将此工作的版权归属于Apache软件基金会（ASF）。 请参阅NOTICE文件
+// 了解有关版权所有权的其他信息。 ASF根据Apache许可证第2.0版（
+// “许可证”）授予您此文件的使用权，除非您遵守许可证。 您可以在
+// 与许可证一致的情况下使用此文件。 您可以在以下位置获取许可证的副本
 //
 //   http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing,
-// software distributed under the License is distributed on an
-// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-// KIND, either express or implied.  See the License for the
-// specific language governing permissions and limitations
-// under the License.
+// 除非适用法律要求或书面同意，
+// 在许可证下分发的软件是基于“原样”基础分发的
+// 没有任何明示或暗示的担保或条件
+// 类型，包括但不限于特定目的的适销性和适用性
+// 根据许可证，特定语言管理权限和限制
+// 许可证下的许可。
 
 use std::sync::Arc;
 
@@ -23,9 +20,9 @@ use datafusion_execution::config::SessionConfig;
 
 use crate::{CatalogProvider, CatalogProviderList, SchemaProvider, TableProvider};
 
-/// A schema provider that looks up tables in a cache
+/// 一个在缓存中查找表的模式提供者
 ///
-/// Instances are created by the [`AsyncSchemaProvider::resolve`] method
+/// 实例是通过[`AsyncSchemaProvider::resolve`]方法创建的
 #[derive(Debug)]
 struct ResolvedSchemaProvider {
     owner_name: Option<String>,
@@ -68,7 +65,7 @@ impl SchemaProvider for ResolvedSchemaProvider {
     }
 }
 
-/// Helper class for building a [`ResolvedSchemaProvider`]
+/// 用于构建[`ResolvedSchemaProvider`]的辅助类
 struct ResolvedSchemaProviderBuilder {
     owner_name: String,
     async_provider: Arc<dyn AsyncSchemaProvider>,
@@ -105,9 +102,9 @@ impl ResolvedSchemaProviderBuilder {
     }
 }
 
-/// A catalog provider that looks up schemas in a cache
+/// 一个在缓存中查找模式的目录提供者
 ///
-/// Instances are created by the [`AsyncCatalogProvider::resolve`] method
+/// 实例是通过[`AsyncCatalogProvider::resolve`]方法创建的
 #[derive(Debug)]
 struct ResolvedCatalogProvider {
     cached_schemas: HashMap<String, Arc<dyn SchemaProvider>>,
@@ -126,7 +123,7 @@ impl CatalogProvider for ResolvedCatalogProvider {
     }
 }
 
-/// Helper class for building a [`ResolvedCatalogProvider`]
+/// 用于构建[`ResolvedCatalogProvider`]的辅助类
 struct ResolvedCatalogProviderBuilder {
     cached_schemas: HashMap<String, Option<ResolvedSchemaProviderBuilder>>,
     async_provider: Arc<dyn AsyncCatalogProvider>,
@@ -150,9 +147,9 @@ impl ResolvedCatalogProviderBuilder {
     }
 }
 
-/// A catalog provider list that looks up catalogs in a cache
+/// 一个在缓存中查找目录的目录提供者列表
 ///
-/// Instances are created by the [`AsyncCatalogProviderList::resolve`] method
+/// 实例是通过[`AsyncCatalogProviderList::resolve`]方法创建的
 #[derive(Debug)]
 struct ResolvedCatalogProviderList {
     cached_catalogs: HashMap<String, Arc<dyn CatalogProvider>>,
@@ -179,35 +176,35 @@ impl CatalogProviderList for ResolvedCatalogProviderList {
     }
 }
 
-/// A trait for schema providers that must resolve tables asynchronously
+/// 一个必须异步解析表的模式提供者的特征
 ///
-/// The [`SchemaProvider::table`] method _is_ asynchronous.  However, this is primarily for convenience and
-/// it is not a good idea for this method to be slow as this will cause poor planning performance.
+/// [`SchemaProvider::table`]方法是异步的。 但是，这主要是为了方便
+/// 它不是一个好主意，因为这个方法会导致规划性能差。
 ///
-/// It is a better idea to resolve the tables once and cache them in memory for the duration of
-/// planning.  This trait helps implement that pattern.
+/// 最好的主意是一次解析表一次，并将它们缓存在内存中
+/// 规划的持续时间。 这个特征帮助实现这种模式。
 ///
-/// After implementing this trait you can call the [`AsyncSchemaProvider::resolve`] method to get an
-/// `Arc<dyn SchemaProvider>` that contains a cached copy of the referenced tables.  The `resolve`
-/// method can be slow and asynchronous as it is only called once, before planning.
+/// 实现了这个特征后，您可以调用[`AsyncSchemaProvider::resolve`]方法来获取
+/// 包含引用表的缓存副本的`Arc<dyn SchemaProvider>`。 `resolve`
+/// 方法可以是缓慢和异步的，因为它只在规划之前调用一次。
 ///
-/// See the [remote_catalog.rs] for an end to end example
+/// 有关详细信息，请参见[remote_catalog.rs]的端到端示例
 ///
 /// [remote_catalog.rs]: https://github.com/apache/datafusion/blob/main/datafusion-examples/examples/remote_catalog.rs
 #[async_trait]
 pub trait AsyncSchemaProvider: Send + Sync {
-    /// Lookup a table in the schema provider
+    /// 在模式提供者中查找表
     async fn table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>>;
-    /// Creates a cached provider that can be used to execute a query containing given references
+    /// 创建一个缓存提供者，该提供者可以用于执行包含给定引用的查询
     ///
-    /// This method will walk through the references and look them up once, creating a cache of table
-    /// providers.  This cache will be returned as a synchronous TableProvider that can be used to plan
-    /// and execute a query containing the given references.
+    /// 此方法将遍历引用并查找它们一次，创建一个表的缓存
+    /// 提供者。 这个缓存将作为一个同步的TableProvider返回，可以用于规划
+    /// 和执行包含给定引用的查询。
     ///
-    /// This cache is intended to be short-lived for the execution of a single query.  There is no mechanism
-    /// for refresh or eviction of stale entries.
+    /// 这个缓存的预期寿命是为了执行单个查询而短暂的。 没有机制
+    /// 刷新或驱逐过时的条目。
     ///
-    /// See the [`AsyncSchemaProvider`] documentation for additional details
+    /// 有关详细信息，请参见[`AsyncSchemaProvider`]文档
     async fn resolve(
         &self,
         references: &[TableReference],
@@ -222,7 +219,7 @@ pub trait AsyncSchemaProvider: Send + Sync {
                 .catalog()
                 .unwrap_or(&config.options().catalog.default_catalog);
 
-            // Maybe this is a reference to some other catalog provided in another way
+            // 可能这是对其他目录的引用，以其他方式提供
             if ref_catalog_name != catalog_name {
                 continue;
             }
@@ -253,26 +250,25 @@ pub trait AsyncSchemaProvider: Send + Sync {
     }
 }
 
-/// A trait for catalog providers that must resolve schemas asynchronously
+/// 一个必须异步解析模式的目录提供者的特征
 ///
-/// The [`CatalogProvider::schema`] method is synchronous because asynchronous operations should
-/// not be used during planning.  This trait makes it easy to lookup schema references once and cache
-/// them for future planning use.  See [`AsyncSchemaProvider`] for more details on motivation.
-
+/// [`CatalogProvider::schema`]方法是同步的，因为在规划期间不应使用异步操作
+/// 这个特征使得查找一次模式引用并缓存它们以供将来的规划变得容易
+/// 有关动机的详细信息，请参见[`AsyncSchemaProvider`]。
 #[async_trait]
 pub trait AsyncCatalogProvider: Send + Sync {
-    /// Lookup a schema in the provider
+    /// 在提供者中查找模式
     async fn schema(&self, name: &str) -> Result<Option<Arc<dyn AsyncSchemaProvider>>>;
 
-    /// Creates a cached provider that can be used to execute a query containing given references
+    /// 创建一个缓存提供者，该提供者可以用于执行包含给定引用的查询
     ///
-    /// This method will walk through the references and look them up once, creating a cache of schema
-    /// providers (each with their own cache of table providers).  This cache will be returned as a
-    /// synchronous CatalogProvider that can be used to plan and execute a query containing the given
-    /// references.
+    /// 此方法将遍历引用并查找它们一次，创建一个模式的缓存
+    /// 提供者（每个都有自己的表提供者的缓存）。 这个缓存将作为一个
+    /// 同步的CatalogProvider返回，可以用于规划和执行包含给定的查询
+    /// 引用的查询。
     ///
-    /// This cache is intended to be short-lived for the execution of a single query.  There is no mechanism
-    /// for refresh or eviction of stale entries.
+    /// 这个缓存的预期寿命是为了执行单个查询而短暂的。 没有机制
+    /// 刷新或驱逐过时的条目。
     async fn resolve(
         &self,
         references: &[TableReference],
@@ -287,7 +283,7 @@ pub trait AsyncCatalogProvider: Send + Sync {
                 .catalog()
                 .unwrap_or(&config.options().catalog.default_catalog);
 
-            // Maybe this is a reference to some other catalog provided in another way
+            // 可能这是对其他目录的引用，以其他方式提供
             if ref_catalog_name != catalog_name {
                 continue;
             }
@@ -310,7 +306,7 @@ pub trait AsyncCatalogProvider: Send + Sync {
                 cached_schemas.get_mut(schema_name).unwrap()
             };
 
-            // If we can't find the catalog don't bother checking the table
+            // 如果我们找不到目录，就不要检查表
             let Some(schema) = schema else { continue };
 
             schema.resolve_table(reference.table()).await?;
@@ -327,25 +323,25 @@ pub trait AsyncCatalogProvider: Send + Sync {
     }
 }
 
-/// A trait for catalog provider lists that must resolve catalogs asynchronously
+/// 一个必须异步解析目录提供者的特征
 ///
-/// The [`CatalogProviderList::catalog`] method is synchronous because asynchronous operations should
-/// not be used during planning.  This trait makes it easy to lookup catalog references once and cache
-/// them for future planning use.  See [`AsyncSchemaProvider`] for more details on motivation.
+/// [`CatalogProviderList::catalog`]方法是同步的，因为在规划期间不应使用异步操作
+/// 这个特征使得查找一次目录引用并缓存它们以供将来的规划变得容易
+/// 有关动机的详细信息，请参见[`AsyncSchemaProvider`]。
 #[async_trait]
 pub trait AsyncCatalogProviderList: Send + Sync {
-    /// Lookup a catalog in the provider
+    /// 在提供者中查找目录
     async fn catalog(&self, name: &str) -> Result<Option<Arc<dyn AsyncCatalogProvider>>>;
 
-    /// Creates a cached provider that can be used to execute a query containing given references
+    /// 创建一个缓存提供者，该提供者可以用于执行包含给定引用的查询
     ///
-    /// This method will walk through the references and look them up once, creating a cache of catalog
-    /// providers, schema providers, and table providers.  This cache will be returned as a
-    /// synchronous CatalogProvider that can be used to plan and execute a query containing the given
-    /// references.
+    /// 此方法将遍历引用并查找它们一次，创建一个目录的缓存
+    /// 提供者，模式提供者和表提供者。 这个缓存将作为一个
+    /// 同步的CatalogProviderList返回，可以用于规划和执行包含给定的查询
+    /// 引用的查询。
     ///
-    /// This cache is intended to be short-lived for the execution of a single query.  There is no mechanism
-    /// for refresh or eviction of stale entries.
+    /// 这个缓存的预期寿命是为了执行单个查询而短暂的。 没有机制
+    /// 刷新或驱逐过时的条目。
     async fn resolve(
         &self,
         references: &[TableReference],
@@ -359,14 +355,14 @@ pub trait AsyncCatalogProviderList: Send + Sync {
                 .catalog()
                 .unwrap_or(&config.options().catalog.default_catalog);
 
-            // We will do three lookups here, one for the catalog, one for the schema, and one for the table
-            // We cache the result (both found results and not-found results) to speed up future lookups
+            // 我们将在这里进行三次查找，一次是为了目录，一次是为了模式，一次是为了表
+            // 我们缓存结果（找到的结果和未找到的结果）以加速将来的查找
             //
-            // Note that a cache-miss is not an error at this point.  We allow for the possibility that
-            // other providers may supply the reference.
+            // 请注意，缓存未命中在这一点上不是一个错误。 我们允许其他提供者可能
+            // 提供引用。
             //
-            // If this is the only provider then a not-found error will be raised during planning when it can't
-            // find the reference in the cache.
+            // 如果这是唯一的提供者，那么在规划期间，当它无法
+            // 在缓存中找到引用时，将引发未找到错误。
 
             let catalog = if let Some(catalog) = cached_catalogs.get_mut(catalog_name) {
                 catalog
@@ -378,7 +374,7 @@ pub trait AsyncCatalogProviderList: Send + Sync {
                 cached_catalogs.get_mut(catalog_name).unwrap()
             };
 
-            // If we can't find the catalog don't bother checking the schema / table
+            // 如果我们找不到目录，就不要检查模式/表
             let Some(catalog) = catalog else { continue };
 
             let schema_name = reference
@@ -402,13 +398,13 @@ pub trait AsyncCatalogProviderList: Send + Sync {
                 catalog.cached_schemas.get_mut(schema_name).unwrap()
             };
 
-            // If we can't find the catalog don't bother checking the table
+            // 如果我们找不到目录，就不要检查表
             let Some(schema) = schema else { continue };
 
             schema.resolve_table(reference.table()).await?;
         }
 
-        // Build the cached catalog provider list
+        // 构建缓存的目录提供者列表
         let cached_catalogs = cached_catalogs
             .into_iter()
             .filter_map(|(key, maybe_builder)| {
@@ -449,7 +445,7 @@ mod tests {
             self
         }
 
-        /// Get a reference to the schema for this table
+        /// 获取此表的模式引用
         fn schema(&self) -> SchemaRef {
             unimplemented!()
         }
@@ -530,19 +526,19 @@ mod tests {
             }
         }
 
-        // Basic full lookups
+        // 基本的完整查找
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, MOCK_SCHEMA, MOCK_TABLE),
                 TableReference::full(MOCK_CATALOG, MOCK_SCHEMA, "not_exists"),
             ],
-            2,
+             2,
             &[MOCK_TABLE],
             &["not_exists"],
         )
         .await;
 
-        // Catalog / schema mismatch doesn't even search
+        // 目录/模式不匹配时，不会进行搜索
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, "foo", MOCK_TABLE),
@@ -554,7 +550,7 @@ mod tests {
         )
         .await;
 
-        // Both hits and misses cached
+        // 都有命中和未命中的缓存
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, MOCK_SCHEMA, MOCK_TABLE),
@@ -618,19 +614,19 @@ mod tests {
             }
         }
 
-        // Basic full lookups
+        // 基本的完整查找
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, MOCK_SCHEMA, "x"),
                 TableReference::full(MOCK_CATALOG, "not_exists", "x"),
             ],
-            2,
+             2,
             &[MOCK_SCHEMA],
             &["not_exists"],
         )
         .await;
 
-        // Catalog mismatch doesn't even search
+        // 目录不匹配时，不会进行搜索
         check(
             vec![TableReference::full("foo", MOCK_SCHEMA, "x")],
             0,
@@ -639,7 +635,7 @@ mod tests {
         )
         .await;
 
-        // Both hits and misses cached
+        // 都有命中和未命中的缓存
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, MOCK_SCHEMA, "x"),
@@ -701,19 +697,19 @@ mod tests {
             }
         }
 
-        // Basic full lookups
+        // 基本的完整查找
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, "x", "x"),
                 TableReference::full("not_exists", "x", "x"),
             ],
-            2,
+             2,
             &[MOCK_CATALOG],
             &["not_exists"],
         )
         .await;
 
-        // Both hits and misses cached
+        // 都有命中和未命中的缓存
         check(
             vec![
                 TableReference::full(MOCK_CATALOG, "x", "x"),
