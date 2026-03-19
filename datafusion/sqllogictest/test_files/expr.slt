@@ -1269,23 +1269,23 @@ NULL
 # Test tuple/row-wise IN comparisons using struct syntax
 # Note: Using arrow_cast for precise type control
 
-# (NULL, NULL) IN ((1, 2)) => FALSE
+# (NULL, NULL) IN ((1, 2)) => NULL
 query B
 SELECT struct(arrow_cast(NULL, 'Int32'), arrow_cast(NULL, 'Int32')) IN (struct(1, 2))
 ----
-false
+NULL
 
-# (NULL, NULL) IN ((NULL, 1)) => FALSE
+# (NULL, NULL) IN ((NULL, 1)) => NULL
 query B
 SELECT struct(arrow_cast(NULL, 'Int32'), arrow_cast(NULL, 'Int32')) IN (struct(arrow_cast(NULL, 'Int32'), 1))
 ----
-false
+NULL
 
-# (NULL, NULL) IN ((NULL, NULL)) => TRUE (exact match)
+# (NULL, NULL) IN ((NULL, NULL)) => NULL
 query B
 SELECT struct(arrow_cast(NULL, 'Int32'), arrow_cast(NULL, 'Int32')) IN (struct(arrow_cast(NULL, 'Int32'), arrow_cast(NULL, 'Int32')))
 ----
-true
+NULL
 
 # (NULL, 1) IN ((1, 2)) => FALSE
 query B
@@ -1293,17 +1293,17 @@ SELECT struct(arrow_cast(NULL, 'Int32'), 1) IN (struct(1, 2))
 ----
 false
 
-# (NULL, 1) IN ((NULL, 1)) => TRUE (exact match)
+# (NULL, 1) IN ((NULL, 1)) => NULL
 query B
 SELECT struct(arrow_cast(NULL, 'Int32'), 1) IN (struct(arrow_cast(NULL, 'Int32'), 1))
 ----
-true
+NULL
 
-# (NULL, 1) IN ((NULL, NULL)) => FALSE
+# (NULL, 1) IN ((NULL, NULL)) => NULL
 query B
 SELECT struct(arrow_cast(NULL, 'Int32'), 1) IN (struct(arrow_cast(NULL, 'Int32'), arrow_cast(NULL, 'Int32')))
 ----
-false
+NULL
 
 # (1, 2) IN ((1, 2)) => TRUE
 query B
@@ -1323,17 +1323,29 @@ SELECT struct(4, 4) IN (struct(1, 2))
 ----
 false
 
-# (1, 1) IN ((NULL, 1)) => FALSE
+# (1, 1) IN ((NULL, 1)) => NULL
 query B
 SELECT struct(1, 1) IN (struct(NULL, 1))
 ----
-false
+NULL
 
-# (1, 1) IN ((NULL, NULL)) => FALSE
+# (1, 1) IN ((NULL, NULL)) => NULL
 query B
 SELECT struct(1, 1) IN (struct(NULL, NULL))
 ----
-false
+NULL
+
+# (7521, 30) IN ((7521, NULL)) => NULL
+query B
+SELECT struct(7521, 30) IN (struct(7521, NULL))
+----
+NULL
+
+# (7521, 30) NOT IN ((7521, NULL)) => NULL
+query B
+SELECT struct(7521, 30) NOT IN (struct(7521, NULL))
+----
+NULL
 
 # Cleanup test tables
 
