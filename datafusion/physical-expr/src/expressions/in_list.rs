@@ -3084,25 +3084,25 @@ mod tests {
             Ok(())
         };
 
-        // (NULL, NULL) IN ((1, 2)) => FALSE (tuples don't match)
+        // (NULL, NULL) IN ((1, 2)) => NULL
         run_tuple_test(
             make_struct(None, None),
             vec![make_struct(Some(1), Some(2))],
-            vec![Some(false)],
+            vec![None],
         )?;
 
-        // (NULL, NULL) IN ((NULL, 1)) => FALSE
+        // (NULL, NULL) IN ((NULL, 1)) => NULL
         run_tuple_test(
             make_struct(None, None),
             vec![make_struct(None, Some(1))],
-            vec![Some(false)],
+            vec![None],
         )?;
 
-        // (NULL, NULL) IN ((NULL, NULL)) => TRUE (exact match including nulls)
+        // (NULL, NULL) IN ((NULL, NULL)) => NULL
         run_tuple_test(
             make_struct(None, None),
             vec![make_struct(None, None)],
-            vec![Some(true)],
+            vec![None],
         )?;
 
         // (NULL, 1) IN ((1, 2)) => FALSE
@@ -3112,18 +3112,18 @@ mod tests {
             vec![Some(false)],
         )?;
 
-        // (NULL, 1) IN ((NULL, 1)) => TRUE (exact match)
+        // (NULL, 1) IN ((NULL, 1)) => NULL
         run_tuple_test(
             make_struct(None, Some(1)),
             vec![make_struct(None, Some(1))],
-            vec![Some(true)],
+            vec![None],
         )?;
 
-        // (NULL, 1) IN ((NULL, NULL)) => FALSE
+        // (NULL, 1) IN ((NULL, NULL)) => NULL
         run_tuple_test(
             make_struct(None, Some(1)),
             vec![make_struct(None, None)],
-            vec![Some(false)],
+            vec![None],
         )?;
 
         // (1, 2) IN ((1, 2)) => TRUE
@@ -3147,18 +3147,18 @@ mod tests {
             vec![Some(false)],
         )?;
 
-        // (1, 1) IN ((NULL, 1)) => FALSE
+        // (1, 1) IN ((NULL, 1)) => NULL
         run_tuple_test(
             make_struct(Some(1), Some(1)),
             vec![make_struct(None, Some(1))],
-            vec![Some(false)],
+            vec![None],
         )?;
 
-        // (1, 1) IN ((NULL, NULL)) => FALSE
+        // (1, 1) IN ((NULL, NULL)) => NULL
         run_tuple_test(
             make_struct(Some(1), Some(1)),
             vec![make_struct(None, None)],
-            vec![Some(false)],
+            vec![None],
         )?;
 
         Ok(())
