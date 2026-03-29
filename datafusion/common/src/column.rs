@@ -237,7 +237,39 @@ impl Column {
                 .collect::<Vec<_>>();
             match qualified_fields.len() {
                 0 => continue,
-                1 => return Ok(Column::from(qualified_fields[0])),
+                1 => {
+                    // Even a single structural match must be rejected when the
+                    // schema itself has flagged the name as ambiguous (e.g. a
+                    // derived-table subquery that contained two columns with
+                    // the same unqualified name).
+                    let is_ambiguous = schema_level
+                        .iter()
+                        .any(|s| s.ambiguous_names().contains(&self.name));
+                    if is_ambiguous {
+                        return _schema_err!(SchemaError::AmbiguousReference {
+                            field: Box::new(Column::new_unqualified(&self.name)),
+                        })
+                        .map_err(|err| {
+                            let mut diagnostic = Diagnostic::new_error(
+                                format!("column '{}' is ambiguous", &self.name),
+                                self.spans().first(),
+                            );
+                            let columns = schema_level
+                                .iter()
+                                .flat_map(|s| {
+                                    s.columns_with_unqualified_name(&self.name)
+                                })
+                                .collect::<Vec<_>>();
+                            add_possible_columns_to_diag(
+                                &mut diagnostic,
+                                &Column::new_unqualified(&self.name),
+                                &columns,
+                            );
+                            err.with_diagnostic(diagnostic)
+                        });
+                    }
+                    return Ok(Column::from(qualified_fields[0]));
+                }
                 _ => {
                     // More than 1 fields in this schema have their names set to self.name.
                     //

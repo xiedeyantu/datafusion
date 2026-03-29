@@ -2406,6 +2406,28 @@ impl SubqueryAlias {
         let aliases = unique_field_aliases(plan.schema().fields());
         let is_projection_needed = aliases.iter().any(Option::is_some);
 
+        // Collect the set of unqualified field names that are ambiguous in this
+        // subquery alias's output schema.  A name is ambiguous when two or more
+        // input columns share the same unqualified name (they come, say, from
+        // different sides of a JOIN).  `unique_field_aliases` renames the
+        // duplicates to keep the Arrow schema free of duplicates, but we still
+        // need to reject unqualified references to those names from outer
+        // queries.
+        let ambiguous_names: HashSet<String> = aliases
+            .iter()
+            .zip(plan.schema().fields().iter())
+            .filter_map(|(alias, field)| {
+                // When a field was given a rename alias it means its original
+                // name already appeared in the schema → the original name is
+                // ambiguous.
+                if alias.is_some() {
+                    Some(field.name().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         // Insert a projection node, if needed, to make sure aliases are applied.
         let plan = if is_projection_needed {
             let projection_expressions = aliases
@@ -2438,7 +2460,8 @@ impl SubqueryAlias {
 
         let schema = DFSchemaRef::new(
             DFSchema::try_from_qualified_schema(alias.clone(), schema)?
-                .with_functional_dependencies(func_dependencies)?,
+                .with_functional_dependencies(func_dependencies)?
+                .with_ambiguous_names(ambiguous_names),
         );
         Ok(SubqueryAlias {
             input: plan,

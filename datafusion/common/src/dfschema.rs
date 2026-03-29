@@ -117,6 +117,11 @@ pub struct DFSchema {
     field_qualifiers: Vec<Option<TableReference>>,
     /// Stores functional dependencies in the schema.
     functional_dependencies: FunctionalDependencies,
+    /// Field names that are ambiguous in this schema because the underlying
+    /// source (e.g. a derived-table subquery) contained multiple columns with
+    /// the same unqualified name.  Any attempt to reference these names without
+    /// a qualifier should produce an [`SchemaError::AmbiguousReference`] error.
+    ambiguous_names: HashSet<String>,
 }
 
 impl DFSchema {
@@ -126,6 +131,7 @@ impl DFSchema {
             inner: Arc::new(Schema::new([])),
             field_qualifiers: vec![],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         }
     }
 
@@ -157,6 +163,7 @@ impl DFSchema {
             inner: schema,
             field_qualifiers: qualifiers,
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         dfschema.check_names()?;
         Ok(dfschema)
@@ -173,6 +180,7 @@ impl DFSchema {
             inner: schema,
             field_qualifiers: vec![None; field_count],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         dfschema.check_names()?;
         Ok(dfschema)
@@ -191,6 +199,7 @@ impl DFSchema {
             inner: schema.clone().into(),
             field_qualifiers: vec![Some(qualifier); schema.fields.len()],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         schema.check_names()?;
         Ok(schema)
@@ -205,6 +214,7 @@ impl DFSchema {
             inner: Arc::clone(schema),
             field_qualifiers: qualifiers,
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         dfschema.check_names()?;
         Ok(dfschema)
@@ -226,6 +236,7 @@ impl DFSchema {
             inner: Arc::clone(&self.inner),
             field_qualifiers: qualifiers,
             functional_dependencies: self.functional_dependencies.clone(),
+            ambiguous_names: self.ambiguous_names.clone(),
         })
     }
 
@@ -275,6 +286,24 @@ impl DFSchema {
         }
     }
 
+    /// Marks the given field names as ambiguous.
+    ///
+    /// Ambiguous names correspond to fields that originated from multiple
+    /// source columns with the same unqualified name (e.g. both sides of a
+    /// JOIN having an `age` column).  Any attempt to resolve such a name
+    /// without a table qualifier will produce an
+    /// [`SchemaError::AmbiguousReference`] error.
+    pub fn with_ambiguous_names(mut self, names: HashSet<String>) -> Self {
+        self.ambiguous_names = names;
+        self
+    }
+
+    /// Returns the set of field names that are considered ambiguous in this
+    /// schema.  See [`Self::with_ambiguous_names`].
+    pub fn ambiguous_names(&self) -> &HashSet<String> {
+        &self.ambiguous_names
+    }
+
     /// Create a new schema that contains the fields from this schema followed by the fields
     /// from the supplied schema. An error will be returned if there are duplicate field names.
     pub fn join(&self, schema: &DFSchema) -> Result<Self> {
@@ -294,6 +323,7 @@ impl DFSchema {
             inner: Arc::new(new_schema_with_metadata),
             field_qualifiers: new_qualifiers,
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         new_self.check_names()?;
         Ok(new_self)
@@ -506,6 +536,14 @@ impl DFSchema {
         &self,
         name: &str,
     ) -> Result<(Option<&TableReference>, &FieldRef)> {
+        // If this field name was marked as ambiguous at schema creation time
+        // (e.g. because a derived-table subquery produced duplicate column
+        // names), refuse to resolve it without an explicit qualifier.
+        if self.ambiguous_names.contains(name) {
+            return _schema_err!(SchemaError::AmbiguousReference {
+                field: Box::new(Column::new_unqualified(name.to_string()))
+            });
+        }
         let matches = self.qualified_fields_with_unqualified_name(name);
         match matches.len() {
             0 => Err(unqualified_field_not_found(name, self)),
@@ -845,6 +883,7 @@ impl DFSchema {
             field_qualifiers: vec![None; self.inner.fields.len()],
             inner: self.inner,
             functional_dependencies: self.functional_dependencies,
+            ambiguous_names: self.ambiguous_names,
         }
     }
 
@@ -855,6 +894,7 @@ impl DFSchema {
             field_qualifiers: vec![Some(qualifier); self.inner.fields.len()],
             inner: self.inner,
             functional_dependencies: self.functional_dependencies,
+            ambiguous_names: self.ambiguous_names,
         }
     }
 
@@ -1126,6 +1166,7 @@ impl TryFrom<SchemaRef> for DFSchema {
             inner: schema,
             field_qualifiers: vec![None; field_count],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         // Without checking names, because schema here may have duplicate field names.
         // For example, Partial AggregateMode will generate duplicate field names from
@@ -1187,6 +1228,7 @@ impl ToDFSchema for Vec<Field> {
             inner: schema.into(),
             field_qualifiers: vec![None; field_count],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         Ok(dfschema)
     }
@@ -1578,6 +1620,7 @@ mod tests {
             inner: Arc::clone(&arrow_schema_ref),
             field_qualifiers: vec![None; arrow_schema_ref.fields.len()],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
         let df_schema_ref = Arc::new(df_schema.clone());
 
@@ -1624,6 +1667,7 @@ mod tests {
             inner: Arc::clone(&schema),
             field_qualifiers: vec![None; schema.fields.len()],
             functional_dependencies: FunctionalDependencies::empty(),
+            ambiguous_names: HashSet::new(),
         };
 
         assert_eq!(df_schema.inner.metadata(), schema.metadata())
