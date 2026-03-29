@@ -256,9 +256,7 @@ impl Column {
                             );
                             let columns = schema_level
                                 .iter()
-                                .flat_map(|s| {
-                                    s.columns_with_unqualified_name(&self.name)
-                                })
+                                .flat_map(|s| s.columns_with_unqualified_name(&self.name))
                                 .collect::<Vec<_>>();
                             add_possible_columns_to_diag(
                                 &mut diagnostic,
