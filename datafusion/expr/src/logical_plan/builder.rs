@@ -1987,7 +1987,7 @@ fn project_with_validation(
             }
         }
     }
-    if has_wildcard && projected_expr.is_empty() {
+    if has_wildcard && projected_expr.is_empty() && !plan.schema().fields().is_empty() {
         return plan_err!(
             "SELECT list is empty after resolving * expressions, \
              the wildcard expanded to zero columns"
