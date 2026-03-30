@@ -2413,20 +2413,17 @@ impl SubqueryAlias {
         // duplicates to keep the Arrow schema free of duplicates, but we still
         // need to reject unqualified references to those names from outer
         // queries.
-        let ambiguous_names: HashSet<String> = aliases
-            .iter()
-            .zip(plan.schema().fields().iter())
-            .filter_map(|(alias, field)| {
-                // When a field was given a rename alias it means its original
-                // name already appeared in the schema → the original name is
-                // ambiguous.
-                if alias.is_some() {
-                    Some(field.name().to_string())
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let ambiguous_names: HashSet<String> = {
+            let mut name_counts: HashMap<&str, usize> = HashMap::new();
+            for field in plan.schema().fields() {
+                *name_counts.entry(field.name().as_str()).or_insert(0) += 1;
+            }
+            name_counts
+                .into_iter()
+                .filter(|&(_, count)| count >= 2)
+                .map(|(name, _)| name.to_string())
+                .collect()
+        };
 
         // Insert a projection node, if needed, to make sure aliases are applied.
         let plan = if is_projection_needed {
