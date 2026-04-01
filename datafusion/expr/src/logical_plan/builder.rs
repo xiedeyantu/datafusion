@@ -1745,7 +1745,30 @@ pub fn build_join_schema(
         .collect();
 
     let dfschema = DFSchema::new_with_metadata(qualified_fields, metadata)?;
-    dfschema.with_functional_dependencies(func_dependencies)
+    let dfschema = dfschema.with_functional_dependencies(func_dependencies)?;
+
+    // Propagate ambiguous names from both input schemas.  A name that was
+    // already ambiguous on either side of the join (e.g. because the left
+    // input is itself a subquery that wrapped a JOIN) remains ambiguous in
+    // the output.  We only propagate names that actually appear as field
+    // names in the output schema so we don't accumulate stale entries.
+    let output_field_names: HashSet<&str> = dfschema
+        .fields()
+        .iter()
+        .map(|f| f.name().as_str())
+        .collect();
+    let inherited_ambiguous: HashSet<String> = left
+        .ambiguous_names()
+        .iter()
+        .chain(right.ambiguous_names())
+        .filter(|n| output_field_names.contains(n.as_str()))
+        .cloned()
+        .collect();
+    if inherited_ambiguous.is_empty() {
+        Ok(dfschema)
+    } else {
+        Ok(dfschema.with_ambiguous_names(inherited_ambiguous))
+    }
 }
 
 /// (Re)qualify the sides of a join if needed, i.e. if the columns from one side would otherwise

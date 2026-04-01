@@ -2375,6 +2375,29 @@ pub fn projection_schema(input: &LogicalPlan, exprs: &[Expr]) -> Result<Arc<DFSc
                 exprs, input,
             )?)?;
 
+    // Propagate ambiguous names from the input for any column passed through
+    // unchanged.  This prevents a `SELECT * FROM (...) AS alias` wrapper from
+    // silently dropping the ambiguity marker set by an inner JOIN or alias.
+    let input_ambiguous = input.schema().ambiguous_names();
+    if !input_ambiguous.is_empty() {
+        // A column is a pass-through when it is `Expr::Column(c)` and `c.name`
+        // appears in the input's ambiguous set.
+        let inherited: HashSet<String> = exprs
+            .iter()
+            .filter_map(|e| {
+                if let Expr::Column(col) = e {
+                    if input_ambiguous.contains(&col.name) {
+                        return Some(col.name.clone());
+                    }
+                }
+                None
+            })
+            .collect();
+        if !inherited.is_empty() {
+            return Ok(Arc::new(schema.with_ambiguous_names(inherited)));
+        }
+    }
+
     Ok(Arc::new(schema))
 }
 
@@ -2406,23 +2429,37 @@ impl SubqueryAlias {
         let aliases = unique_field_aliases(plan.schema().fields());
         let is_projection_needed = aliases.iter().any(Option::is_some);
 
-        // Collect the set of unqualified field names that are ambiguous in this
-        // subquery alias's output schema.  A name is ambiguous when two or more
-        // input columns share the same unqualified name (they come, say, from
-        // different sides of a JOIN).  `unique_field_aliases` renames the
-        // duplicates to keep the Arrow schema free of duplicates, but we still
-        // need to reject unqualified references to those names from outer
-        // queries.
+        // Collect unqualified field names that are ambiguous in this alias's
+        // output schema.  `unique_field_aliases` renames duplicates (e.g. to
+        // "id:1") to keep Arrow happy, but outer queries must still be
+        // prevented from referencing those names without qualification.
+        // We also inherit names already marked ambiguous by the input schema
+        // so nested `SELECT * FROM (...) AS sN` wrappers don't lose the marker.
         let ambiguous_names: HashSet<String> = {
             let mut name_counts: HashMap<&str, usize> = HashMap::new();
             for field in plan.schema().fields() {
                 *name_counts.entry(field.name().as_str()).or_insert(0) += 1;
             }
-            name_counts
+            let mut names: HashSet<String> = name_counts
                 .into_iter()
                 .filter(|&(_, count)| count >= 2)
                 .map(|(name, _)| name.to_string())
-                .collect()
+                .collect();
+
+            // Inherit names still visible in the output (the first occurrence
+            // of a renamed duplicate like "id:1" still keeps the name "id").
+            let output_field_names: HashSet<&str> = plan
+                .schema()
+                .fields()
+                .iter()
+                .map(|f| f.name().as_str())
+                .collect();
+            for inherited in plan.schema().ambiguous_names() {
+                if output_field_names.contains(inherited.as_str()) {
+                    names.insert(inherited.clone());
+                }
+            }
+            names
         };
 
         // Insert a projection node, if needed, to make sure aliases are applied.

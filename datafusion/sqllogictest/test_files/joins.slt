@@ -5594,6 +5594,52 @@ FROM (SELECT t_left.id, t_left.age, t_right.score, t_extra.dept
 100 eng
 200 sales
 
+# Nested derived table: double SELECT * wrapper must preserve ambiguity.
+# SELECT age FROM ( SELECT * FROM ( SELECT * FROM t_left JOIN t_right ON t_left.id = t_right.id ) AS s1 ) AS s2
+# "age" is ambiguous in s1 (from both t_left and t_right) and must stay
+# ambiguous when s1 is wrapped in another SELECT * … AS s2.
+query error DataFusion error: Schema error: Ambiguous reference to unqualified field age
+SELECT age FROM (
+  SELECT * FROM (
+    SELECT * FROM t_left JOIN t_right ON t_left.id = t_right.id
+  ) AS s1
+) AS s2;
+
+# Nested derived table: same for "id"
+query error DataFusion error: Schema error: Ambiguous reference to unqualified field id
+SELECT id FROM (
+  SELECT * FROM (
+    SELECT * FROM t_left JOIN t_right ON t_left.id = t_right.id
+  ) AS s1
+) AS s2;
+
+# Join over subquery + table: ambiguous names from the subquery side must
+# propagate into the outer join schema so that bare "age" is still rejected.
+# Set up a seed table with a single column so only the subquery side has "age".
+statement ok
+CREATE TABLE seed(val INT) AS VALUES (1), (2);
+
+query error DataFusion error: Schema error: Ambiguous reference to unqualified field age
+SELECT age FROM (SELECT * FROM t_left JOIN t_right ON t_left.id = t_right.id) sub
+JOIN seed ON true;
+
+# Qualified access through the subquery alias is still fine even after joining
+# with another table.
+query II rowsort
+SELECT sub.id, sub.score FROM (
+  SELECT t_left.id, t_right.score
+  FROM t_left JOIN t_right ON t_left.id = t_right.id
+) sub
+JOIN seed ON true;
+----
+1 100
+1 100
+2 200
+2 200
+
+statement ok
+DROP TABLE seed;
+
 statement ok
 DROP TABLE t_left;
 
