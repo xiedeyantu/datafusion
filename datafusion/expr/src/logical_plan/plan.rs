@@ -2385,10 +2385,10 @@ pub fn projection_schema(input: &LogicalPlan, exprs: &[Expr]) -> Result<Arc<DFSc
         let inherited: HashSet<String> = exprs
             .iter()
             .filter_map(|e| {
-                if let Expr::Column(col) = e {
-                    if input_ambiguous.contains(&col.name) {
-                        return Some(col.name.clone());
-                    }
+                if let Expr::Column(col) = e
+                    && input_ambiguous.contains(&col.name)
+                {
+                    return Some(col.name.clone());
                 }
                 None
             })
