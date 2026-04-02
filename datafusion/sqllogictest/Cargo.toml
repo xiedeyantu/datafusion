@@ -58,6 +58,7 @@ object_store = { workspace = true }
 postgres-types = { version = "0.2.13", features = ["derive", "with-chrono-0_4"], optional = true }
 # When updating the following dependency verify that sqlite test file regeneration works correctly
 # by running the regenerate_sqlite_files.sh script.
+regex = { workspace = true }
 sqllogictest = "0.29.1"
 sqlparser = { workspace = true }
 tempfile = { workspace = true }
@@ -83,7 +84,6 @@ substrait = ["datafusion-substrait"]
 
 [dev-dependencies]
 env_logger = { workspace = true }
-regex = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 
 [[test]]
