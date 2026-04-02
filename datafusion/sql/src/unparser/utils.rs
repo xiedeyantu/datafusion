@@ -247,7 +247,14 @@ fn find_agg_expr<'a>(agg: &'a Aggregate, column: &Column) -> Result<Option<&'a E
                     )
                 }
                 Ordering::Greater => {
-                    Ok(agg.aggr_expr.get(index - grouping_expr.len() - 1))
+                    if index < grouping_expr.len() + 1 {
+                        return internal_err!(
+                            "Tried to unproject column referring to internal grouping column"
+                        );
+                    }
+                    Ok(agg
+                        .aggr_expr
+                        .get(index - grouping_expr.len() - 1))
                 }
             }
         } else {
