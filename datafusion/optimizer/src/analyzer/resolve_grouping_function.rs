@@ -214,7 +214,8 @@ fn grouping_function_on_id(
     } else {
         (1u64 << n).wrapping_sub(1)
     };
-    let masked_id = bitwise_and(grouping_id_column.clone(), literal(semantic_mask as usize));
+    let masked_id =
+        bitwise_and(grouping_id_column.clone(), literal(semantic_mask as usize));
     if args.len() == group_by_expr_count
         && args
             .iter()

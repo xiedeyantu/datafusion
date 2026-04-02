@@ -1972,8 +1972,7 @@ fn group_id_array(
             "Grouping sets with more than 64 columns are not supported"
         );
     }
-    let ordinal_bits =
-        usize::BITS as usize - max_ordinal.leading_zeros() as usize;
+    let ordinal_bits = usize::BITS as usize - max_ordinal.leading_zeros() as usize;
     let total_bits = n + ordinal_bits;
     if total_bits > 64 {
         return not_impl_err!(
@@ -2058,7 +2057,12 @@ pub fn evaluate_group_by(
                 }
             }));
             if !group_by.is_single() {
-                group_values.push(group_id_array(group, current_ordinal, max_ordinal, batch)?);
+                group_values.push(group_id_array(
+                    group,
+                    current_ordinal,
+                    max_ordinal,
+                    batch,
+                )?);
             }
             Ok(group_values)
         })

@@ -3621,8 +3621,7 @@ impl Aggregate {
     /// are no duplicate grouping sets).  The type is chosen to be the smallest
     /// unsigned integer that can represent both parts.
     pub fn grouping_id_type(group_exprs: usize, max_ordinal: usize) -> DataType {
-        let ordinal_bits =
-            usize::BITS as usize - max_ordinal.leading_zeros() as usize;
+        let ordinal_bits = usize::BITS as usize - max_ordinal.leading_zeros() as usize;
         let total_bits = group_exprs + ordinal_bits;
         if total_bits <= 8 {
             DataType::UInt8
@@ -3695,8 +3694,7 @@ impl PartialOrd for Aggregate {
 /// Returns 0 when no grouping set is duplicated.
 fn max_grouping_set_duplicate_ordinal(group_expr: &[Expr]) -> usize {
     if let Some(Expr::GroupingSet(GroupingSet::GroupingSets(sets))) = group_expr.first() {
-        let mut counts: HashMap<&Vec<Expr>, usize> =
-            HashMap::new();
+        let mut counts: HashMap<&Vec<Expr>, usize> = HashMap::new();
         for set in sets {
             *counts.entry(set).or_insert(0) += 1;
         }

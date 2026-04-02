@@ -252,9 +252,7 @@ fn find_agg_expr<'a>(agg: &'a Aggregate, column: &Column) -> Result<Option<&'a E
                             "Tried to unproject column referring to internal grouping column"
                         );
                     }
-                    Ok(agg
-                        .aggr_expr
-                        .get(index - grouping_expr.len() - 1))
+                    Ok(agg.aggr_expr.get(index - grouping_expr.len() - 1))
                 }
             }
         } else {
