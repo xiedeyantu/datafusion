@@ -22,7 +22,7 @@ use std::{path::PathBuf, time::Duration};
 use super::{DFSqlLogicTestError, error::Result, normalize};
 use crate::engines::currently_executed_sql::CurrentlyExecutingSqlTracker;
 use crate::engines::output::{DFColumnType, DFOutput};
-use crate::is_spark_path;
+use crate::{is_spark_path, is_sqlite_path};
 use arrow::record_batch::RecordBatch;
 use async_trait::async_trait;
 use datafusion::physical_plan::common::collect;
@@ -153,8 +153,21 @@ impl sqllogictest::AsyncDB for DataFusion {
 
         let tracked_sql = self.currently_executing_sql_tracker.set_sql(sql);
 
+        // SQLite uses 64-bit integers for the INTEGER type, whereas DataFusion uses 32-bit.
+        // When running SQLite compatibility tests, replace INTEGER with BIGINT so that
+        // arithmetic matches SQLite semantics and does not overflow.
+        let sql = if is_sqlite_path(&self.relative_path) {
+            use std::sync::LazyLock;
+            static INTEGER_RE: LazyLock<regex::Regex> =
+                LazyLock::new(|| regex::Regex::new(r"(?i)\bINTEGER\b").unwrap());
+            std::borrow::Cow::Owned(INTEGER_RE.replace_all(sql, "BIGINT").into_owned())
+        } else {
+            std::borrow::Cow::Borrowed(sql)
+        };
+
         let start = Instant::now();
-        let result = run_query(&self.ctx, is_spark_path(&self.relative_path), sql).await;
+        let result =
+            run_query(&self.ctx, is_spark_path(&self.relative_path), sql.as_ref()).await;
         let duration = start.elapsed();
 
         self.currently_executing_sql_tracker.remove_sql(tracked_sql);

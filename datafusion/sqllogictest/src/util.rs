@@ -141,6 +141,10 @@ pub fn is_spark_path(relative_path: &Path) -> bool {
     relative_path.starts_with("spark/")
 }
 
+pub fn is_sqlite_path(relative_path: &Path) -> bool {
+    relative_path.starts_with("sqlite")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
