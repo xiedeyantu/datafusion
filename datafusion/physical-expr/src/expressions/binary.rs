@@ -88,7 +88,7 @@ impl BinaryExpr {
             left,
             op,
             right,
-            fail_on_overflow: false,
+            fail_on_overflow: true,
         }
     }
 

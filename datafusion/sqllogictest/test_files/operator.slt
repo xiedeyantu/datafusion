@@ -363,3 +363,34 @@ set datafusion.explain.physical_plan_only = false;
 
 statement ok
 drop table numeric_types
+
+############### Integer Overflow Behavior ###############
+# SMALLINT (Int16) addition overflow
+query error DataFusion error: Arrow error: Arithmetic overflow: Overflow happened on: 32767 \+ 2
+SELECT CAST(32767 AS SMALLINT) + CAST(2 AS SMALLINT);
+
+# SMALLINT (Int16) subtraction overflow
+query error DataFusion error: Arrow error: Arithmetic overflow: Overflow happened on: -32768 - 1
+SELECT CAST(-32768 AS SMALLINT) - CAST(1 AS SMALLINT);
+
+# SMALLINT (Int16) multiplication overflow
+query error DataFusion error: Arrow error: Arithmetic overflow: Overflow happened on: 32767 \* 2
+SELECT CAST(32767 AS SMALLINT) * CAST(2 AS SMALLINT);
+
+# INT (Int32) addition overflow
+query error DataFusion error: Arrow error: Arithmetic overflow: Overflow happened on: 2147483647 \+ 1
+SELECT CAST(2147483647 AS INT) + CAST(1 AS INT);
+
+# BIGINT (Int64) addition overflow
+query error DataFusion error: Arrow error: Arithmetic overflow: Overflow happened on: 9223372036854775807 \+ 1
+SELECT CAST(9223372036854775807 AS BIGINT) + CAST(1 AS BIGINT);
+
+# TINYINT (Int8) addition overflow
+query error DataFusion error: Arrow error: Arithmetic overflow: Overflow happened on: 127 \+ 1
+SELECT CAST(127 AS TINYINT) + CAST(1 AS TINYINT);
+
+# No overflow within range - should succeed
+query I
+SELECT CAST(32766 AS SMALLINT) + CAST(1 AS SMALLINT);
+----
+32767
