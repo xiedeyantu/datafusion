@@ -320,7 +320,6 @@ mod tests {
         ColumnarValue, Expr, ScalarFunctionArgs, ScalarUDF, ScalarUDFImpl, Signature,
         Volatility, col, lit,
     };
-    use std::any::Any;
 
     macro_rules! assert_optimized_plan_equal {
         (
@@ -346,10 +345,6 @@ mod tests {
     struct VolatileTestUdf;
 
     impl ScalarUDFImpl for VolatileTestUdf {
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
         fn name(&self) -> &str {
             "volatile_test"
         }
