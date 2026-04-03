@@ -311,6 +311,11 @@ config_namespace! {
         /// By default, `nulls_max` is used to follow Postgres's behavior.
         /// postgres rule: <https://www.postgresql.org/docs/current/queries-order.html>
         pub default_null_ordering: String, default = "nulls_max".to_string()
+
+        /// When set to true, the SQL types `INTEGER`, `INT`, and `INT4` are mapped
+        /// to `Int64` (BIGINT) instead of the default `Int32`. This is useful for
+        /// SQLite compatibility, where `INTEGER` is a 64-bit type.
+        pub integer_type_is_bigint: bool, default = false
     }
 }
 

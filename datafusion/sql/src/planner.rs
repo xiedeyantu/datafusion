@@ -57,6 +57,9 @@ pub struct ParserOptions {
     pub map_string_types_to_utf8view: bool,
     /// Default null ordering for sorting expressions.
     pub default_null_ordering: NullOrdering,
+    /// When true, `INTEGER`/`INT`/`INT4` SQL types map to `Int64` instead of `Int32`.
+    /// Useful for SQLite compatibility where INTEGER is a 64-bit type.
+    pub integer_type_is_bigint: bool,
 }
 
 impl ParserOptions {
@@ -81,6 +84,7 @@ impl ParserOptions {
             // By default, `nulls_max` is used to follow Postgres's behavior.
             // postgres rule: https://www.postgresql.org/docs/current/queries-order.html
             default_null_ordering: NullOrdering::NullsMax,
+            integer_type_is_bigint: false,
         }
     }
 
@@ -141,6 +145,12 @@ impl ParserOptions {
         self.default_null_ordering = value;
         self
     }
+
+    /// Sets the `integer_type_is_bigint` option.
+    pub fn with_integer_type_is_bigint(mut self, value: bool) -> Self {
+        self.integer_type_is_bigint = value;
+        self
+    }
 }
 
 impl Default for ParserOptions {
@@ -160,6 +170,7 @@ impl From<&SqlParserOptions> for ParserOptions {
                 .enable_options_value_normalization,
             collect_spans: options.collect_spans,
             default_null_ordering: options.default_null_ordering.as_str().into(),
+            integer_type_is_bigint: options.integer_type_is_bigint,
         }
     }
 }
@@ -663,7 +674,11 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
             SQLDataType::TinyInt(_) => Ok(DataType::Int8),
             SQLDataType::SmallInt(_) | SQLDataType::Int2(_) => Ok(DataType::Int16),
             SQLDataType::Int(_) | SQLDataType::Integer(_) | SQLDataType::Int4(_) => {
-                Ok(DataType::Int32)
+                if self.options.integer_type_is_bigint {
+                    Ok(DataType::Int64)
+                } else {
+                    Ok(DataType::Int32)
+                }
             }
             SQLDataType::BigInt(_) | SQLDataType::Int8(_) => Ok(DataType::Int64),
             SQLDataType::TinyIntUnsigned(_) => Ok(DataType::UInt8),

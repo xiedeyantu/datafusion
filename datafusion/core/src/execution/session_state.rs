@@ -539,6 +539,7 @@ impl SessionState {
                 .default_null_ordering
                 .as_str()
                 .into(),
+            integer_type_is_bigint: sql_parser_options.integer_type_is_bigint,
         }
     }
 

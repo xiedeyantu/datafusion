@@ -49,6 +49,7 @@ use datafusion::{
 use datafusion_spark::SessionStateBuilderSpark;
 
 use crate::is_spark_path;
+use crate::is_sqlite_path;
 use async_trait::async_trait;
 use datafusion::common::cast::as_float64_array;
 use datafusion::execution::SessionStateBuilder;
@@ -78,9 +79,19 @@ impl TestContext {
     /// If `None` is returned (e.g. because some needed feature is not
     /// enabled), the file should be skipped
     pub async fn try_new_for_test_file(relative_path: &Path) -> Option<Self> {
-        let config = SessionConfig::new()
+        let mut config = SessionConfig::new()
             // hardcode target partitions so plans are deterministic
             .with_target_partitions(4);
+
+        // SQLite uses 64-bit integers for the INTEGER type, whereas DataFusion
+        // defaults to 32-bit. Enable the bigint mapping for SQLite-compatible tests.
+        if is_sqlite_path(relative_path) {
+            config = config.set_bool(
+                "datafusion.sql_parser.integer_type_is_bigint",
+                true,
+            );
+        }
+
         let runtime = Arc::new(RuntimeEnv::default());
 
         let mut state_builder = SessionStateBuilder::new()
