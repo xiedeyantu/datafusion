@@ -380,6 +380,11 @@ impl DFSchema {
         let finished_with_metadata = finished.with_metadata(metadata);
         self.inner = finished_with_metadata.into();
         self.field_qualifiers.extend(qualifiers);
+        // Propagate ambiguous names from the other schema so that names marked
+        // as ambiguous (e.g. by a JOIN) are not silently dropped when schemas
+        // are merged for ORDER BY / HAVING resolution.
+        self.ambiguous_names
+            .extend(other_schema.ambiguous_names.iter().cloned());
     }
 
     /// Get a list of fields for this schema
