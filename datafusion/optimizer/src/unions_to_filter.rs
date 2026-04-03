@@ -146,6 +146,15 @@ struct Branch {
 
 fn extract_branch(plan: LogicalPlan) -> Result<Option<Branch>> {
     let (wrappers, plan) = peel_wrappers(plan);
+
+    // Volatile or subquery expressions in the projection must not be merged:
+    // they are evaluated once per branch in the original plan but would be
+    // evaluated once per combined row after the rewrite, which can change the
+    // output row set.
+    if !wrapper_projections_are_safe(&wrappers) {
+        return Ok(None);
+    }
+
     match plan {
         LogicalPlan::Filter(Filter {
             predicate, input, ..
@@ -273,6 +282,22 @@ fn align_plan_to_schema(
 
 fn is_mergeable_predicate(expr: &Expr) -> bool {
     !expr.is_volatile() && !expr_contains_subquery(expr)
+}
+
+/// Returns `true` when every projection expression in `wrappers` is both
+/// non-volatile and subquery-free.
+///
+/// Volatile expressions (e.g. `random()`, `now()`) or correlated subqueries
+/// in the SELECT list cannot be safely merged: the original plan evaluates
+/// them once per branch execution, while the rewritten plan evaluates them
+/// once per combined row, which can change the set of output rows.
+fn wrapper_projections_are_safe(wrappers: &[Wrapper]) -> bool {
+    wrappers.iter().all(|w| match w {
+        Wrapper::Projection { expr, .. } => expr
+            .iter()
+            .all(|e| !e.is_volatile() && !expr_contains_subquery(e)),
+        Wrapper::SubqueryAlias { .. } => true,
+    })
 }
 
 fn expr_contains_subquery(expr: &Expr) -> bool {
@@ -438,6 +463,93 @@ mod tests {
             Filter: Boolean(true) OR emp.b = Int32(5)
               TableScan: emp
         ")?;
+        Ok(())
+    }
+
+    /// A volatile expression in the **projection** (SELECT list) must block the
+    /// rewrite.  Each original branch evaluates it independently; merging them
+    /// would evaluate it once per combined row, changing the row set.
+    #[test]
+    fn keep_union_distinct_with_volatile_projection() -> Result<()> {
+        // Both branches project volatile_test() AS v over the same source.
+        let left = LogicalPlanBuilder::from(test_table_scan_with_name("t")?)
+            .filter(col("a").eq(lit(1)))?
+            .project(vec![volatile_expr().alias("v"), col("a")])?
+            .build()?;
+        let right = LogicalPlanBuilder::from(test_table_scan_with_name("t")?)
+            .filter(col("a").eq(lit(2)))?
+            .project(vec![volatile_expr().alias("v"), col("a")])?
+            .build()?;
+
+        let plan = LogicalPlanBuilder::from(left)
+            .union_distinct(right)?
+            .build()?;
+
+        assert_optimized_plan_equal!(plan, @r"
+        Distinct:
+          Union
+            Projection: volatile_test() AS v, t.a
+              Filter: t.a = Int32(1)
+                TableScan: t
+            Projection: volatile_test() AS v, t.a
+              Filter: t.a = Int32(2)
+                TableScan: t
+        ")?;
+        Ok(())
+    }
+
+    /// A scalar subquery in the **projection** must also block the rewrite.
+    #[test]
+    fn keep_union_distinct_with_subquery_in_projection() -> Result<()> {
+        use datafusion_expr::scalar_subquery;
+
+        // Build a simple scalar subquery: (SELECT t2.b FROM t2 WHERE t2.a = t.a)
+        let t2 = test_table_scan_with_name("t2")?;
+        let subquery_plan = Arc::new(
+            LogicalPlanBuilder::from(t2)
+                .filter(col("t2.a").eq(col("t.a")))?
+                .project(vec![col("t2.b")])?
+                .build()?,
+        );
+        let sq = scalar_subquery(subquery_plan);
+
+        let left = LogicalPlanBuilder::from(test_table_scan_with_name("t")?)
+            .filter(col("a").eq(lit(1)))?
+            .project(vec![sq.clone().alias("sub"), col("a")])?
+            .build()?;
+        let right = LogicalPlanBuilder::from(test_table_scan_with_name("t")?)
+            .filter(col("a").eq(lit(2)))?
+            .project(vec![sq.alias("sub"), col("a")])?
+            .build()?;
+
+        let plan = LogicalPlanBuilder::from(left)
+            .union_distinct(right)?
+            .build()?;
+
+        // Plan should be left untouched because the projection contains a subquery.
+        let optimized = {
+            let mut options = datafusion_common::config::ConfigOptions::default();
+            options.optimizer.enable_unions_to_filter = true;
+            let optimizer_ctx =
+                OptimizerContext::new_with_config_options(Arc::new(options))
+                    .with_max_passes(1);
+            let rules: Vec<Arc<dyn OptimizerRule + Send + Sync>> =
+                vec![Arc::new(UnionsToFilter::new())];
+            crate::Optimizer::with_rules(rules).optimize(
+                plan.clone(),
+                &optimizer_ctx,
+                |_, _| {},
+            )?
+        };
+        // The Distinct(Union(...)) structure must be preserved.
+        assert!(
+            matches!(
+                &optimized,
+                LogicalPlan::Distinct(Distinct::All(inner))
+                if matches!(inner.as_ref(), LogicalPlan::Union(_))
+            ),
+            "expected Distinct(Union(...)) to be preserved, got:\n{optimized:?}"
+        );
         Ok(())
     }
 }
