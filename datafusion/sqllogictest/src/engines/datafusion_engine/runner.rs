@@ -154,8 +154,7 @@ impl sqllogictest::AsyncDB for DataFusion {
         let tracked_sql = self.currently_executing_sql_tracker.set_sql(sql);
 
         let start = Instant::now();
-        let result =
-            run_query(&self.ctx, is_spark_path(&self.relative_path), sql).await;
+        let result = run_query(&self.ctx, is_spark_path(&self.relative_path), sql).await;
         let duration = start.elapsed();
 
         self.currently_executing_sql_tracker.remove_sql(tracked_sql);

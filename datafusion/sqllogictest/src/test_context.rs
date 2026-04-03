@@ -86,10 +86,8 @@ impl TestContext {
         // SQLite uses 64-bit integers for the INTEGER type, whereas DataFusion
         // defaults to 32-bit. Enable the bigint mapping for SQLite-compatible tests.
         if is_sqlite_path(relative_path) {
-            config = config.set_bool(
-                "datafusion.sql_parser.integer_type_is_bigint",
-                true,
-            );
+            config =
+                config.set_bool("datafusion.sql_parser.integer_type_is_bigint", true);
         }
 
         let runtime = Arc::new(RuntimeEnv::default());
