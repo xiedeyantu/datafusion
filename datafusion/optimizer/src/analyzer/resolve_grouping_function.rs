@@ -209,11 +209,7 @@ fn grouping_function_on_id(
     // bits (above position `n`) so only the semantic bitmask is visible.
     let n = group_by_expr_count;
     // (1 << n) - 1 masks the low n bits.
-    let semantic_mask: u64 = if n >= 64 {
-        u64::MAX
-    } else {
-        (1u64 << n) - 1
-    };
+    let semantic_mask: u64 = if n >= 64 { u64::MAX } else { (1u64 << n) - 1 };
     if args.len() == group_by_expr_count
         && args
             .iter()
