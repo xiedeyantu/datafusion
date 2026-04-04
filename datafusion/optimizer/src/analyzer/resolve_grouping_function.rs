@@ -208,14 +208,12 @@ fn grouping_function_on_id(
     // The grouping call is exactly our internal grouping id — mask the ordinal
     // bits (above position `n`) so only the semantic bitmask is visible.
     let n = group_by_expr_count;
-    // (1 << n) - 1 masks the low n bits.  Use saturating arithmetic to handle n == 0.
+    // (1 << n) - 1 masks the low n bits.
     let semantic_mask: u64 = if n >= 64 {
         u64::MAX
     } else {
-        (1u64 << n).wrapping_sub(1)
+        (1u64 << n) - 1
     };
-    let masked_id =
-        bitwise_and(grouping_id_column.clone(), literal(semantic_mask as usize));
     if args.len() == group_by_expr_count
         && args
             .iter()
@@ -223,6 +221,8 @@ fn grouping_function_on_id(
             .enumerate()
             .all(|(idx, expr)| group_by_expr.get(expr) == Some(&idx))
     {
+        let masked_id =
+            bitwise_and(grouping_id_column.clone(), literal(semantic_mask as usize));
         return Ok(cast(masked_id, DataType::Int32));
     }
 

@@ -3698,12 +3698,7 @@ fn max_grouping_set_duplicate_ordinal(group_expr: &[Expr]) -> usize {
         for set in sets {
             *counts.entry(set).or_insert(0) += 1;
         }
-        counts
-            .values()
-            .copied()
-            .max()
-            .unwrap_or(1)
-            .saturating_sub(1)
+        counts.into_values().max().unwrap_or(0).saturating_sub(1)
     } else {
         0
     }

@@ -1998,21 +1998,17 @@ fn group_id_array(
 
 /// Returns the highest duplicate ordinal across all grouping sets.
 ///
-/// The ordinal counts how many times a grouping-set pattern has already
-/// appeared before the current occurrence.  If the same `Vec<bool>` appears
+/// At the call-site, the ordinal is the 0-based index assigned to each
+/// occurrence of a repeated grouping-set pattern: the first occurrence gets
+/// ordinal 0, the second gets 1, and so on.  If the same `Vec<bool>` appears
 /// three times the ordinals are 0, 1, 2 and this function returns 2.
 /// Returns 0 when no grouping set is duplicated.
 fn max_duplicate_ordinal(groups: &[Vec<bool>]) -> usize {
-    let mut counts: HashMap<&Vec<bool>, usize> = HashMap::new();
+    let mut counts: HashMap<&[bool], usize> = HashMap::new();
     for group in groups {
         *counts.entry(group).or_insert(0) += 1;
     }
-    counts
-        .values()
-        .copied()
-        .max()
-        .unwrap_or(1)
-        .saturating_sub(1)
+    counts.into_values().max().unwrap_or(0).saturating_sub(1)
 }
 
 /// Evaluate a group by expression against a `RecordBatch`
