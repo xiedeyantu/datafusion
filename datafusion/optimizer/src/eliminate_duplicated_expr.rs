@@ -19,8 +19,8 @@
 
 use crate::optimizer::ApplyOrder;
 use crate::{OptimizerConfig, OptimizerRule};
-use datafusion_common::Result;
 use datafusion_common::tree_node::Transformed;
+use datafusion_common::{Result, get_required_sort_exprs_indices};
 use datafusion_expr::logical_plan::LogicalPlan;
 use datafusion_expr::{Aggregate, Expr, Sort, SortExpr};
 use std::hash::{Hash, Hasher};
@@ -76,11 +76,49 @@ impl OptimizerRule for EliminateDuplicatedExpr {
                     .map(|wrapper| wrapper.0)
                     .collect();
 
-                let transformed = if len != unique_exprs.len() {
+                let sort_expr_names = unique_exprs
+                    .iter()
+                    .map(|sort_expr| sort_expr.expr.schema_name().to_string())
+                    .collect::<Vec<_>>();
+                let required_indices = get_required_sort_exprs_indices(
+                    sort.input.schema().as_ref(),
+                    &sort_expr_names,
+                );
+
+                let (unique_exprs, fd_transformed) =
+                    if let Some(required_indices) = required_indices {
+                        if required_indices.len() != unique_exprs.len() {
+                            (
+                                required_indices
+                                    .into_iter()
+                                    .map(|idx| unique_exprs[idx].clone())
+                                    .collect(),
+                                true,
+                            )
+                        } else {
+                            (unique_exprs, false)
+                        }
+                    } else {
+                        (unique_exprs, false)
+                    };
+
+                let transformed = if len != unique_exprs.len() || fd_transformed {
                     Transformed::yes
                 } else {
                     Transformed::no
                 };
+
+                if unique_exprs.is_empty() {
+                    return if sort.fetch.is_some() {
+                        Ok(Transformed::no(LogicalPlan::Sort(Sort {
+                            expr: unique_exprs,
+                            input: sort.input,
+                            fetch: sort.fetch,
+                        })))
+                    } else {
+                        Ok(Transformed::yes(sort.input.as_ref().clone()))
+                    };
+                }
 
                 Ok(transformed(LogicalPlan::Sort(Sort {
                     expr: unique_exprs,
@@ -122,6 +160,7 @@ mod tests {
     use crate::assert_optimized_plan_eq_snapshot;
     use crate::test::*;
     use datafusion_expr::{col, logical_plan::builder::LogicalPlanBuilder};
+    use datafusion_functions_aggregate::sum::sum;
     use std::sync::Arc;
 
     macro_rules! assert_optimized_plan_equal {
@@ -172,6 +211,42 @@ mod tests {
         assert_optimized_plan_equal!(plan, @r"
         Limit: skip=5, fetch=10
           Sort: test.a ASC NULLS FIRST, test.b ASC NULLS LAST
+            TableScan: test
+        ")
+    }
+
+    #[test]
+    fn eliminate_fd_redundant_sort_expr() -> Result<()> {
+        let table_scan = test_table_scan().unwrap();
+        let plan = LogicalPlanBuilder::from(table_scan)
+            .aggregate(vec![col("a")], vec![sum(col("b")).alias("total_sal")])?
+            .sort(vec![
+                col("a").sort(true, true),
+                col("total_sal").sort(true, true),
+            ])?
+            .build()?;
+
+        assert_optimized_plan_equal!(plan, @r"
+        Sort: test.a ASC NULLS FIRST
+          Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b) AS total_sal]]
+            TableScan: test
+        ")
+    }
+
+    #[test]
+    fn keep_order_by_when_dependency_comes_later() -> Result<()> {
+        let table_scan = test_table_scan().unwrap();
+        let plan = LogicalPlanBuilder::from(table_scan)
+            .aggregate(vec![col("a")], vec![sum(col("b")).alias("total_sal")])?
+            .sort(vec![
+                col("total_sal").sort(true, true),
+                col("a").sort(true, true),
+            ])?
+            .build()?;
+
+        assert_optimized_plan_equal!(plan, @r"
+        Sort: total_sal ASC NULLS FIRST, test.a ASC NULLS FIRST
+          Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b) AS total_sal]]
             TableScan: test
         ")
     }

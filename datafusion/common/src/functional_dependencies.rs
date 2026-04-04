@@ -590,6 +590,46 @@ pub fn get_required_group_by_exprs_indices(
         .collect()
 }
 
+/// Returns indices for the minimal subset of ORDER BY expressions that are
+/// functionally equivalent to the original set of ORDER BY expressions.
+pub fn get_required_sort_exprs_indices(
+    schema: &DFSchema,
+    sort_expr_names: &[String],
+) -> Option<Vec<usize>> {
+    let dependencies = schema.functional_dependencies();
+    let field_names = schema.field_names();
+    let sort_expr_indices = sort_expr_names
+        .iter()
+        .map(|sort_expr_name| {
+            field_names
+                .iter()
+                .position(|field_name| field_name == sort_expr_name)
+        })
+        .collect::<Option<Vec<_>>>()?;
+
+    let mut known_field_indices = HashSet::new();
+    let mut required_sort_expr_indices = Vec::new();
+
+    for (sort_expr_idx, field_idx) in sort_expr_indices.into_iter().enumerate() {
+        let removable = dependencies.deps.iter().any(|dependency| {
+            dependency.target_indices.contains(&field_idx)
+                && dependency
+                    .source_indices
+                    .iter()
+                    .all(|source_idx| known_field_indices.contains(source_idx))
+        });
+
+        if removable {
+            continue;
+        }
+
+        known_field_indices.insert(field_idx);
+        required_sort_expr_indices.push(sort_expr_idx);
+    }
+
+    Some(required_sort_expr_indices)
+}
+
 /// Updates entries inside the `entries` vector with their corresponding
 /// indices inside the `proj_indices` vector.
 fn update_elements_with_matching_indices(
