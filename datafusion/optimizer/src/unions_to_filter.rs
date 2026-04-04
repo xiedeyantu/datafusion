@@ -168,6 +168,11 @@ fn extract_branch(plan: LogicalPlan) -> Result<Option<Branch>> {
                 wrappers,
             }))
         }
+        // A Limit or Sort node changes the row-set semantics of the branch.
+        // Merging two such branches into one would silently drop the per-branch
+        // row restriction (LIMIT) or rely on an order guarantee that UNION does
+        // not preserve (ORDER BY).  Bail out to leave the UNION unchanged.
+        LogicalPlan::Limit(_) | LogicalPlan::Sort(_) => Ok(None),
         other => Ok(Some(Branch {
             source: strip_passthrough_nodes(other.clone()),
             predicate: Expr::Literal(
@@ -545,6 +550,68 @@ mod tests {
             ),
             "expected Distinct(Union(...)) to be preserved, got:\n{optimized:?}"
         );
+        Ok(())
+    }
+
+    /// A UNION where both branches have a LIMIT must **not** be rewritten.
+    /// Each branch independently restricts the row-set; collapsing them into a
+    /// single branch would lose the per-branch LIMIT semantics.
+    #[test]
+    fn keep_union_distinct_with_limit_branches() -> Result<()> {
+        let left = LogicalPlanBuilder::from(test_table_scan_with_name("emp")?)
+            .project(vec![col("a").alias("mgr"), col("b").alias("comm")])?
+            .limit(0, Some(2))?
+            .build()?;
+        let right = LogicalPlanBuilder::from(test_table_scan_with_name("emp")?)
+            .project(vec![col("a").alias("mgr"), col("b").alias("comm")])?
+            .limit(0, Some(2))?
+            .build()?;
+
+        let plan = LogicalPlanBuilder::from(left)
+            .union_distinct(right)?
+            .build()?;
+
+        assert_optimized_plan_equal!(plan, @r"
+        Distinct:
+          Union
+            Limit: skip=0, fetch=2
+              Projection: emp.a AS mgr, emp.b AS comm
+                TableScan: emp
+            Limit: skip=0, fetch=2
+              Projection: emp.a AS mgr, emp.b AS comm
+                TableScan: emp
+        ")?;
+        Ok(())
+    }
+
+    /// A UNION where both branches have an ORDER BY (Sort) must **not** be
+    /// rewritten.  ORDER BY inside a UNION subquery does not guarantee ordering
+    /// in the result; merging the branches would silently discard the Sort.
+    #[test]
+    fn keep_union_distinct_with_sort_branches() -> Result<()> {
+        let left = LogicalPlanBuilder::from(test_table_scan_with_name("emp")?)
+            .project(vec![col("a").alias("mgr"), col("b").alias("comm")])?
+            .sort(vec![col("a").sort(true, true)])?
+            .build()?;
+        let right = LogicalPlanBuilder::from(test_table_scan_with_name("emp")?)
+            .project(vec![col("a").alias("mgr"), col("b").alias("comm")])?
+            .sort(vec![col("a").sort(true, true)])?
+            .build()?;
+
+        let plan = LogicalPlanBuilder::from(left)
+            .union_distinct(right)?
+            .build()?;
+
+        assert_optimized_plan_equal!(plan, @r"
+        Distinct:
+          Union
+            Sort: mgr ASC NULLS FIRST
+              Projection: emp.a AS mgr, emp.b AS comm
+                TableScan: emp
+            Sort: mgr ASC NULLS FIRST
+              Projection: emp.a AS mgr, emp.b AS comm
+                TableScan: emp
+        ")?;
         Ok(())
     }
 }
