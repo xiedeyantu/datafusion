@@ -605,12 +605,14 @@ mod tests {
         assert_optimized_plan_equal!(plan, @r"
         Distinct:
           Union
-            Sort: mgr ASC NULLS FIRST
-              Projection: emp.a AS mgr, emp.b AS comm
-                TableScan: emp
-            Sort: mgr ASC NULLS FIRST
-              Projection: emp.a AS mgr, emp.b AS comm
-                TableScan: emp
+            Projection: mgr, comm
+              Sort: emp.a ASC NULLS FIRST
+                Projection: emp.a AS mgr, emp.b AS comm, emp.a
+                  TableScan: emp
+            Projection: mgr, comm
+              Sort: emp.a ASC NULLS FIRST
+                Projection: emp.a AS mgr, emp.b AS comm, emp.a
+                  TableScan: emp
         ")?;
         Ok(())
     }
