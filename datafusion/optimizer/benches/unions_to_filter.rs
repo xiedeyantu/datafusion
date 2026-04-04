@@ -141,8 +141,8 @@ fn run_optimizer(plan: &LogicalPlan, ctx: &OptimizerContext) -> LogicalPlan {
 fn bench_merge(c: &mut Criterion) {
     let mut options = ConfigOptions::default();
     options.optimizer.enable_unions_to_filter = true;
-    let ctx = OptimizerContext::new_with_config_options(Arc::new(options))
-        .with_max_passes(1);
+    let ctx =
+        OptimizerContext::new_with_config_options(Arc::new(options)).with_max_passes(1);
 
     let mut group = c.benchmark_group("unions_to_filter/merge");
     for n in [2, 8, 32, 128] {
@@ -157,8 +157,8 @@ fn bench_merge(c: &mut Criterion) {
 fn bench_no_merge(c: &mut Criterion) {
     let mut options = ConfigOptions::default();
     options.optimizer.enable_unions_to_filter = true;
-    let ctx = OptimizerContext::new_with_config_options(Arc::new(options))
-        .with_max_passes(1);
+    let ctx =
+        OptimizerContext::new_with_config_options(Arc::new(options)).with_max_passes(1);
 
     let mut group = c.benchmark_group("unions_to_filter/no_merge");
     for n in [2, 8, 32, 128] {
@@ -173,8 +173,8 @@ fn bench_no_merge(c: &mut Criterion) {
 fn bench_merge_with_projection(c: &mut Criterion) {
     let mut options = ConfigOptions::default();
     options.optimizer.enable_unions_to_filter = true;
-    let ctx = OptimizerContext::new_with_config_options(Arc::new(options))
-        .with_max_passes(1);
+    let ctx =
+        OptimizerContext::new_with_config_options(Arc::new(options)).with_max_passes(1);
 
     let mut group = c.benchmark_group("unions_to_filter/merge_with_projection");
     for n in [2, 8, 32, 128] {
@@ -186,5 +186,10 @@ fn bench_merge_with_projection(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_merge, bench_no_merge, bench_merge_with_projection);
+criterion_group!(
+    benches,
+    bench_merge,
+    bench_no_merge,
+    bench_merge_with_projection
+);
 criterion_main!(benches);
