@@ -26,7 +26,8 @@ use crate::{OptimizerConfig, OptimizerRule};
 use datafusion_common::Result;
 use datafusion_common::tree_node::Transformed;
 use datafusion_common::utils::combine_limit;
-use datafusion_expr::logical_plan::{Join, JoinType, Limit, LogicalPlan};
+use datafusion_expr::expr_rewriter::normalize_sorts;
+use datafusion_expr::logical_plan::{Join, JoinType, Limit, LogicalPlan, Sort};
 use datafusion_expr::{FetchType, SkipType, lit};
 
 /// Optimization rule that tries to push down `LIMIT`.
@@ -128,6 +129,19 @@ impl OptimizerRule for PushDownLimit {
                     let sort_fetch = skip + fetch;
                     Some(sort.fetch.map(|f| f.min(sort_fetch)).unwrap_or(sort_fetch))
                 };
+                let ratio_threshold = config.options().optimizer.sort_join_pushdown_ratio_threshold;
+                if let LogicalPlan::Join(join) = sort.input.as_ref()
+                    && let Some(join) = push_down_sort_through_join(
+                        join,
+                        &sort.expr,
+                        new_fetch,
+                        ratio_threshold,
+                    )
+                {
+                    sort.fetch = new_fetch;
+                    sort.input = Arc::new(LogicalPlan::Join(join));
+                    return transformed_limit(skip, fetch, LogicalPlan::Sort(sort));
+                }
                 if new_fetch == sort.fetch {
                     if skip > 0 {
                         original_limit(skip, fetch, LogicalPlan::Sort(sort))
@@ -266,6 +280,130 @@ fn push_down_join(mut join: Join, limit: usize) -> Transformed<Join> {
         join.right = make_arc_limit(0, limit, join.right);
     }
     Transformed::yes(join)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SortJoinSide {
+    Left,
+    Right,
+}
+
+fn push_down_sort_through_join(
+    join: &Join,
+    sort_exprs: &[datafusion_expr::SortExpr],
+    fetch: Option<usize>,
+    ratio_threshold: f64,
+) -> Option<Join> {
+    let fetch = fetch?;
+    let side = sort_side(sort_exprs, join)?;
+
+    match (join.join_type, side) {
+        (JoinType::Left, SortJoinSide::Left) => {
+            if !should_push_down_sort(join.left.as_ref(), fetch, ratio_threshold) {
+                return None;
+            }
+            if child_has_matching_sort(join.left.as_ref(), sort_exprs, fetch) {
+                return None;
+            }
+            let left_sort = normalized_sort(sort_exprs, join.left.as_ref(), fetch)?;
+            let mut join = join.clone();
+            join.left = Arc::new(LogicalPlan::Sort(left_sort));
+            Some(join)
+        }
+        (JoinType::Right, SortJoinSide::Right) => {
+            if !should_push_down_sort(join.right.as_ref(), fetch, ratio_threshold) {
+                return None;
+            }
+            if child_has_matching_sort(join.right.as_ref(), sort_exprs, fetch) {
+                return None;
+            }
+            let right_sort = normalized_sort(sort_exprs, join.right.as_ref(), fetch)?;
+            let mut join = join.clone();
+            join.right = Arc::new(LogicalPlan::Sort(right_sort));
+            Some(join)
+        }
+        _ => None,
+    }
+}
+
+fn sort_side(
+    sort_exprs: &[datafusion_expr::SortExpr],
+    join: &Join,
+) -> Option<SortJoinSide> {
+    let left_schema = join.left.schema();
+    let right_schema = join.right.schema();
+    let mut side: Option<SortJoinSide> = None;
+
+    for sort_expr in sort_exprs {
+        for column in sort_expr.expr.column_refs() {
+            let on_left = left_schema.has_column(&column);
+            let on_right = right_schema.has_column(&column);
+            let current_side = match (on_left, on_right) {
+                (true, false) => SortJoinSide::Left,
+                (false, true) => SortJoinSide::Right,
+                _ => return None,
+            };
+
+            match side {
+                None => side = Some(current_side),
+                Some(existing) if existing == current_side => {}
+                _ => return None,
+            }
+        }
+    }
+
+    side
+}
+
+fn should_push_down_sort(
+    child: &LogicalPlan,
+    fetch: usize,
+    ratio_threshold: f64,
+) -> bool {
+    let Some(child_rows) = child.max_rows() else {
+        return false;
+    };
+
+    if ratio_threshold <= 0.0 {
+        return false;
+    }
+
+    (fetch as f64) <= (child_rows as f64 * ratio_threshold)
+}
+
+fn child_has_matching_sort(
+    child: &LogicalPlan,
+    sort_exprs: &[datafusion_expr::SortExpr],
+    fetch: usize,
+) -> bool {
+    let LogicalPlan::Sort(existing_sort) = child else {
+        return false;
+    };
+
+    match existing_sort.fetch {
+        Some(existing_fetch) if existing_fetch >= fetch => {
+            let Ok(expected_exprs) =
+                normalize_sorts(sort_exprs.to_vec(), existing_sort.input.as_ref())
+            else {
+                return false;
+            };
+            existing_sort.expr == expected_exprs
+        }
+        _ => false,
+    }
+}
+
+fn normalized_sort(
+    sort_exprs: &[datafusion_expr::SortExpr],
+    input: &LogicalPlan,
+    fetch: usize,
+) -> Option<Sort> {
+    let exprs = normalize_sorts(sort_exprs.to_vec(), input).ok()?;
+    Some(Sort {
+        expr: exprs,
+        input: Arc::new(input.clone()),
+        fetch: Some(fetch),
+    })
 }
 
 #[cfg(test)]
@@ -1026,6 +1164,64 @@ mod test {
             TableScan: test
             Limit: skip=0, fetch=1010
               TableScan: test2, fetch=1010
+        "
+        )
+    }
+
+    #[test]
+    fn limit_should_push_down_left_outer_join_order_by_with_offset() -> Result<()> {
+        let table_scan_1 = test_table_scan()?;
+        let table_scan_2 = test_table_scan_with_name("test2")?;
+
+        let plan = LogicalPlanBuilder::from(table_scan_1)
+            .join(
+                LogicalPlanBuilder::from(table_scan_2).build()?,
+                JoinType::Left,
+                (vec!["a"], vec!["a"]),
+                None,
+            )?
+            .sort_by(vec![col("test.b")])?
+            .limit(10, Some(1000))?
+            .build()?;
+
+        assert_optimized_plan_equal!(
+            plan,
+            @r"
+        Limit: skip=10, fetch=1000
+          Sort: test.b ASC NULLS LAST, fetch=1010
+            Left Join: test.a = test2.a
+              Sort: test.b ASC NULLS LAST, fetch=1010
+                TableScan: test
+              TableScan: test2
+        "
+        )
+    }
+
+    #[test]
+    fn limit_should_push_down_right_outer_join_order_by_with_offset() -> Result<()> {
+        let table_scan_1 = test_table_scan()?;
+        let table_scan_2 = test_table_scan_with_name("test2")?;
+
+        let plan = LogicalPlanBuilder::from(table_scan_1)
+            .join(
+                LogicalPlanBuilder::from(table_scan_2).build()?,
+                JoinType::Right,
+                (vec!["a"], vec!["a"]),
+                None,
+            )?
+            .sort_by(vec![col("test2.b")])?
+            .limit(10, Some(1000))?
+            .build()?;
+
+        assert_optimized_plan_equal!(
+            plan,
+            @r"
+        Limit: skip=10, fetch=1000
+          Sort: test2.b ASC NULLS LAST, fetch=1010
+            Right Join: test.a = test2.a
+              TableScan: test
+              Sort: test2.b ASC NULLS LAST, fetch=1010
+                TableScan: test2
         "
         )
     }

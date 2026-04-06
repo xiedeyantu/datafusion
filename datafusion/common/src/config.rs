@@ -942,6 +942,12 @@ config_namespace! {
         /// sort key, reducing data volume before the shuffle.
         pub enable_topk_repartition: bool, default = true
 
+        /// Fraction of the preserved join side's estimated row count that may be
+        /// requested before pushing a `Sort` through a `Left` or `Right` join.
+        /// A value of `0.0` disables the optimization and `1.0` allows it whenever
+        /// the preserved side's row count is known.
+        pub sort_join_pushdown_ratio_threshold: f64, default = 0.1
+
         /// When set to true, the optimizer will attempt to push down TopK dynamic filters
         /// into the file scan phase.
         pub enable_topk_dynamic_filter_pushdown: bool, default = true
