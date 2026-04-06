@@ -108,17 +108,10 @@ impl OptimizerRule for EliminateDuplicatedExpr {
                     Transformed::no
                 };
 
-                if unique_exprs.is_empty() {
-                    return if sort.fetch.is_some() {
-                        Ok(Transformed::no(LogicalPlan::Sort(Sort {
-                            expr: unique_exprs,
-                            input: sort.input,
-                            fetch: sort.fetch,
-                        })))
-                    } else {
-                        Ok(Transformed::yes(sort.input.as_ref().clone()))
-                    };
-                }
+                assert!(
+                    !unique_exprs.is_empty(),
+                    "FD pruning unexpectedly removed all ORDER BY expressions"
+                );
 
                 Ok(transformed(LogicalPlan::Sort(Sort {
                     expr: unique_exprs,
