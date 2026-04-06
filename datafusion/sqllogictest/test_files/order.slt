@@ -318,8 +318,6 @@ physical_plan
 07)------------RepartitionExec: partitioning=RoundRobinBatch(4), input_partitions=1
 08)--------------DataSourceExec: file_groups={1 group: [[WORKSPACE_ROOT/testing/data/csv/aggregate_test_100.csv]]}, projection=[c2, c3], file_type=csv, has_header=true
 
-statement ok
-
 query II
 SELECT c2, c3 FROM aggregate_test_100 ORDER BY c2, c3, c2
 ----
