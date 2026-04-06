@@ -85,24 +85,15 @@ impl OptimizerRule for EliminateDuplicatedExpr {
                     &sort_expr_names,
                 );
 
-                let (unique_exprs, fd_transformed) =
-                    if let Some(required_indices) = required_indices {
-                        if required_indices.len() != unique_exprs.len() {
-                            (
-                                required_indices
-                                    .into_iter()
-                                    .map(|idx| unique_exprs[idx].clone())
-                                    .collect(),
-                                true,
-                            )
-                        } else {
-                            (unique_exprs, false)
-                        }
-                    } else {
-                        (unique_exprs, false)
-                    };
+                let unique_exprs = match required_indices {
+                    Some(indices) if indices.len() < unique_exprs.len() => indices
+                        .into_iter()
+                        .map(|idx| unique_exprs[idx].clone())
+                        .collect(),
+                    _ => unique_exprs,
+                };
 
-                let transformed = if len != unique_exprs.len() || fd_transformed {
+                let transformed = if len != unique_exprs.len() {
                     Transformed::yes
                 } else {
                     Transformed::no
