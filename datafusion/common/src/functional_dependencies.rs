@@ -598,19 +598,19 @@ pub fn get_required_sort_exprs_indices(
 ) -> Option<Vec<usize>> {
     let dependencies = schema.functional_dependencies();
     let field_names = schema.field_names();
-    let sort_expr_indices = sort_expr_names
-        .iter()
-        .map(|sort_expr_name| {
-            field_names
-                .iter()
-                .position(|field_name| field_name == sort_expr_name)
-        })
-        .collect::<Option<Vec<_>>>()?;
 
     let mut known_field_indices = HashSet::new();
     let mut required_sort_expr_indices = Vec::new();
 
-    for (sort_expr_idx, field_idx) in sort_expr_indices.into_iter().enumerate() {
+    for (sort_expr_idx, sort_expr_name) in sort_expr_names.iter().enumerate() {
+        let Some(field_idx) = field_names
+            .iter()
+            .position(|field_name| field_name == sort_expr_name)
+        else {
+            required_sort_expr_indices.push(sort_expr_idx);
+            continue;
+        };
+
         let removable = dependencies.deps.iter().any(|dependency| {
             dependency.target_indices.contains(&field_idx)
                 && dependency

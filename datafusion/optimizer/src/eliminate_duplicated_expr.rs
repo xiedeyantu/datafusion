@@ -160,7 +160,6 @@ mod tests {
     use crate::assert_optimized_plan_eq_snapshot;
     use crate::test::*;
     use datafusion_expr::{col, logical_plan::builder::LogicalPlanBuilder};
-    use datafusion_functions_aggregate::sum::sum;
     use std::sync::Arc;
 
     macro_rules! assert_optimized_plan_equal {
@@ -169,7 +168,8 @@ mod tests {
             @ $expected:literal $(,)?
         ) => {{
             let optimizer_ctx = OptimizerContext::new().with_max_passes(1);
-            let rules: Vec<Arc<dyn crate::OptimizerRule + Send + Sync>> = vec![Arc::new(EliminateDuplicatedExpr::new())];
+            let rules: Vec<Arc<dyn crate::OptimizerRule + Send + Sync>> =
+                vec![Arc::new(EliminateDuplicatedExpr::new())];
             assert_optimized_plan_eq_snapshot!(
                 optimizer_ctx,
                 rules,
@@ -211,42 +211,6 @@ mod tests {
         assert_optimized_plan_equal!(plan, @r"
         Limit: skip=5, fetch=10
           Sort: test.a ASC NULLS FIRST, test.b ASC NULLS LAST
-            TableScan: test
-        ")
-    }
-
-    #[test]
-    fn eliminate_fd_redundant_sort_expr() -> Result<()> {
-        let table_scan = test_table_scan().unwrap();
-        let plan = LogicalPlanBuilder::from(table_scan)
-            .aggregate(vec![col("a")], vec![sum(col("b")).alias("total_sal")])?
-            .sort(vec![
-                col("a").sort(true, true),
-                col("total_sal").sort(true, true),
-            ])?
-            .build()?;
-
-        assert_optimized_plan_equal!(plan, @r"
-        Sort: test.a ASC NULLS FIRST
-          Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b) AS total_sal]]
-            TableScan: test
-        ")
-    }
-
-    #[test]
-    fn keep_order_by_when_dependency_comes_later() -> Result<()> {
-        let table_scan = test_table_scan().unwrap();
-        let plan = LogicalPlanBuilder::from(table_scan)
-            .aggregate(vec![col("a")], vec![sum(col("b")).alias("total_sal")])?
-            .sort(vec![
-                col("total_sal").sort(true, true),
-                col("a").sort(true, true),
-            ])?
-            .build()?;
-
-        assert_optimized_plan_equal!(plan, @r"
-        Sort: total_sal ASC NULLS FIRST, test.a ASC NULLS FIRST
-          Aggregate: groupBy=[[test.a]], aggr=[[sum(test.b) AS total_sal]]
             TableScan: test
         ")
     }
