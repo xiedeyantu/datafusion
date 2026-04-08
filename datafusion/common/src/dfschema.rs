@@ -125,7 +125,7 @@ pub struct DFSchema {
 }
 
 impl fmt::Debug for DFSchema {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         // Show the ambiguous-names set as `{}` when it is empty/absent so that
         // existing Debug snapshots are not affected by the Option wrapper.
         let empty = HashSet::new();
@@ -1281,7 +1281,7 @@ impl ToDFSchema for Vec<Field> {
 }
 
 impl Display for DFSchema {
-    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
             "fields:[{}], metadata:{:?}",
@@ -1299,7 +1299,7 @@ impl Display for DFSchema {
 ///
 /// Note that this trait is implemented for &[DFSchema] which is
 /// widely used in the DataFusion codebase.
-pub trait ExprSchema: std::fmt::Debug {
+pub trait ExprSchema: fmt::Debug {
     /// Is this column reference nullable?
     fn nullable(&self, col: &Column) -> Result<bool> {
         Ok(self.field_from_column(col)?.is_nullable())
@@ -1326,7 +1326,7 @@ pub trait ExprSchema: std::fmt::Debug {
 }
 
 // Implement `ExprSchema` for `Arc<DFSchema>`
-impl<P: AsRef<DFSchema> + std::fmt::Debug> ExprSchema for P {
+impl<P: AsRef<DFSchema> + fmt::Debug> ExprSchema for P {
     fn nullable(&self, col: &Column) -> Result<bool> {
         self.as_ref().nullable(col)
     }
