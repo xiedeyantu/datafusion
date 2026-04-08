@@ -3939,6 +3939,19 @@ fn order_by_ambiguous_name() {
 }
 
 #[test]
+fn order_by_ambiguous_name_via_subquery() {
+    // `age` is not in the SELECT list; ORDER BY falls back to the FROM schema,
+    // which is a subquery over a JOIN — `age` must still be flagged ambiguous.
+    let sql = "SELECT id FROM (SELECT * FROM person a JOIN person b USING (id)) sub ORDER BY age";
+    let err = logical_plan(sql).unwrap_err().strip_backtrace();
+
+    assert_snapshot!(
+        err,
+        @"Schema error: Ambiguous reference to unqualified field age"
+    );
+}
+
+#[test]
 fn group_by_ambiguous_name() {
     let sql = "select max(id) from person a join person b using (id) group by age";
     let err = logical_plan(sql).unwrap_err().strip_backtrace();
