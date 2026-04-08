@@ -1949,6 +1949,17 @@ fn test_cast_to_tinyint() -> Result<(), DataFusionError> {
 }
 
 #[test]
+fn test_cast_to_tinyint_default_dialect() -> Result<(), DataFusionError> {
+    roundtrip_statement_with_dialect_helper!(
+        sql: "select cast(3 as tinyint)",
+        parser_dialect: GenericDialect {},
+        unparser_dialect: UnparserDefaultDialect {},
+        expected: @"SELECT CAST(3 AS TINYINT)",
+    );
+    Ok(())
+}
+
+#[test]
 fn test_with_offset0() {
     let statement = generate_round_trip_statement(MySqlDialect {}, "select 1 offset 0");
     assert_snapshot!(
