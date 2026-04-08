@@ -323,8 +323,7 @@ impl DFSchema {
     /// Returns a reference to an empty set when no ambiguous names have been
     /// recorded (the common case).
     pub fn ambiguous_names(&self) -> &HashSet<String> {
-        static EMPTY: std::sync::OnceLock<HashSet<String>> =
-            std::sync::OnceLock::new();
+        static EMPTY: std::sync::OnceLock<HashSet<String>> = std::sync::OnceLock::new();
         self.ambiguous_names
             .as_deref()
             .unwrap_or_else(|| EMPTY.get_or_init(HashSet::new))
