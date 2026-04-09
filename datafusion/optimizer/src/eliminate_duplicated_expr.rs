@@ -20,7 +20,7 @@
 use crate::optimizer::ApplyOrder;
 use crate::{OptimizerConfig, OptimizerRule};
 use datafusion_common::tree_node::Transformed;
-use datafusion_common::{Result, get_required_sort_exprs_indices};
+use datafusion_common::{Result, get_required_sort_exprs_indices, internal_err};
 use datafusion_expr::logical_plan::LogicalPlan;
 use datafusion_expr::{Aggregate, Expr, Sort, SortExpr};
 use std::hash::{Hash, Hasher};
@@ -85,12 +85,13 @@ impl OptimizerRule for EliminateDuplicatedExpr {
                     &sort_expr_names,
                 );
 
-                let unique_exprs = match required_indices {
-                    Some(indices) if indices.len() < unique_exprs.len() => indices
+                let unique_exprs = if required_indices.len() < unique_exprs.len() {
+                    required_indices
                         .into_iter()
                         .map(|idx| unique_exprs[idx].clone())
-                        .collect(),
-                    _ => unique_exprs,
+                        .collect()
+                } else {
+                    unique_exprs
                 };
 
                 let transformed = if len != unique_exprs.len() {
@@ -99,10 +100,11 @@ impl OptimizerRule for EliminateDuplicatedExpr {
                     Transformed::no
                 };
 
-                assert!(
-                    !unique_exprs.is_empty(),
-                    "FD pruning unexpectedly removed all ORDER BY expressions"
-                );
+                if unique_exprs.is_empty() {
+                    return internal_err!(
+                        "FD pruning unexpectedly removed all ORDER BY expressions"
+                    );
+                }
 
                 Ok(transformed(LogicalPlan::Sort(Sort {
                     expr: unique_exprs,
