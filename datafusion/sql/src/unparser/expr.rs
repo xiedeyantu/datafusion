@@ -604,7 +604,7 @@ impl Unparser<'_> {
             .collect::<Result<Vec<_>>>()?;
         Ok(ast::Expr::Array(Array {
             elem: args,
-            named: false,
+            named: self.dialect.array_keyword(),
         }))
     }
 
@@ -615,7 +615,10 @@ impl Unparser<'_> {
             elem.push(self.scalar_to_sql(&value)?);
         }
 
-        Ok(ast::Expr::Array(Array { elem, named: false }))
+        Ok(ast::Expr::Array(Array {
+            elem,
+            named: self.dialect.array_keyword(),
+        }))
     }
 
     fn array_element_to_sql(&self, args: &[Expr]) -> Result<ast::Expr> {

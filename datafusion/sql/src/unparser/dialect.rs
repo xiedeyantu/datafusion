@@ -51,6 +51,11 @@ pub trait Dialect: Send + Sync {
     /// Return the character used to quote identifiers.
     fn identifier_quote_style(&self, _identifier: &str) -> Option<char>;
 
+    /// Whether array literals should be rendered with the `ARRAY[...]` keyword.
+    fn array_keyword(&self) -> bool {
+        false
+    }
+
     /// Does the dialect support specifying `NULLS FIRST/LAST` in `ORDER BY` clauses?
     fn supports_nulls_first_in_sort(&self) -> bool {
         true
@@ -321,6 +326,10 @@ impl Dialect for DefaultDialect {
 pub struct PostgreSqlDialect {}
 
 impl Dialect for PostgreSqlDialect {
+    fn array_keyword(&self) -> bool {
+        true
+    }
+
     fn supports_qualify(&self) -> bool {
         false
     }
