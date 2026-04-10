@@ -3074,26 +3074,18 @@ mod tests {
         let unparser = Unparser::new(dialect.as_ref());
 
         let inner_type = DataType::Int32;
-        let nested_type = DataType::List(Arc::new(Field::new_list_field(
-            inner_type.clone(),
-            true,
-        )));
+        let nested_type =
+            DataType::List(Arc::new(Field::new_list_field(inner_type.clone(), true)));
 
         let expr = Expr::Literal(
             ScalarValue::List(ScalarValue::new_list_nullable(
                 &[
                     ScalarValue::List(ScalarValue::new_list_nullable(
-                        &[
-                            ScalarValue::Int32(Some(1)),
-                            ScalarValue::Int32(Some(2)),
-                        ],
+                        &[ScalarValue::Int32(Some(1)), ScalarValue::Int32(Some(2))],
                         &inner_type,
                     )),
                     ScalarValue::List(ScalarValue::new_list_nullable(
-                        &[
-                            ScalarValue::Int32(Some(3)),
-                            ScalarValue::Int32(Some(4)),
-                        ],
+                        &[ScalarValue::Int32(Some(3)), ScalarValue::Int32(Some(4))],
                         &inner_type,
                     )),
                 ],
