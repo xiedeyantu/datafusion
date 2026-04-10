@@ -604,7 +604,7 @@ impl Unparser<'_> {
             .collect::<Result<Vec<_>>>()?;
         Ok(ast::Expr::Array(Array {
             elem: args,
-            named: self.dialect.array_keyword(),
+            named: self.dialect.use_array_keyword_for_array_literals(),
         }))
     }
 
@@ -617,7 +617,7 @@ impl Unparser<'_> {
 
         Ok(ast::Expr::Array(Array {
             elem,
-            named: self.dialect.array_keyword(),
+            named: self.dialect.use_array_keyword_for_array_literals(),
         }))
     }
 
@@ -3043,6 +3043,69 @@ mod tests {
 
             assert_eq!(actual, expected);
         }
+    }
+
+    #[test]
+    fn test_array_literal_scalar_value_to_sql_postgres() -> Result<()> {
+        let dialect: Arc<dyn Dialect> = Arc::new(PostgreSqlDialect {});
+        let unparser = Unparser::new(dialect.as_ref());
+
+        let expr = Expr::Literal(
+            ScalarValue::List(ScalarValue::new_list_nullable(
+                &[
+                    ScalarValue::Int32(Some(1)),
+                    ScalarValue::Int32(Some(2)),
+                    ScalarValue::Int32(Some(3)),
+                ],
+                &DataType::Int32,
+            )),
+            None,
+        );
+
+        let ast = unparser.expr_to_sql(&expr)?;
+        assert_eq!(ast.to_string(), "ARRAY[1, 2, 3]");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_nested_array_literal_scalar_value_to_sql_postgres() -> Result<()> {
+        let dialect: Arc<dyn Dialect> = Arc::new(PostgreSqlDialect {});
+        let unparser = Unparser::new(dialect.as_ref());
+
+        let inner_type = DataType::Int32;
+        let nested_type = DataType::List(Arc::new(Field::new_list_field(
+            inner_type.clone(),
+            true,
+        )));
+
+        let expr = Expr::Literal(
+            ScalarValue::List(ScalarValue::new_list_nullable(
+                &[
+                    ScalarValue::List(ScalarValue::new_list_nullable(
+                        &[
+                            ScalarValue::Int32(Some(1)),
+                            ScalarValue::Int32(Some(2)),
+                        ],
+                        &inner_type,
+                    )),
+                    ScalarValue::List(ScalarValue::new_list_nullable(
+                        &[
+                            ScalarValue::Int32(Some(3)),
+                            ScalarValue::Int32(Some(4)),
+                        ],
+                        &inner_type,
+                    )),
+                ],
+                &nested_type,
+            )),
+            None,
+        );
+
+        let ast = unparser.expr_to_sql(&expr)?;
+        assert_eq!(ast.to_string(), "ARRAY[ARRAY[1, 2], ARRAY[3, 4]]");
+
+        Ok(())
     }
 
     #[test]

@@ -52,7 +52,7 @@ pub trait Dialect: Send + Sync {
     fn identifier_quote_style(&self, _identifier: &str) -> Option<char>;
 
     /// Whether array literals should be rendered with the `ARRAY[...]` keyword.
-    fn array_keyword(&self) -> bool {
+    fn use_array_keyword_for_array_literals(&self) -> bool {
         false
     }
 
@@ -326,7 +326,7 @@ impl Dialect for DefaultDialect {
 pub struct PostgreSqlDialect {}
 
 impl Dialect for PostgreSqlDialect {
-    fn array_keyword(&self) -> bool {
+    fn use_array_keyword_for_array_literals(&self) -> bool {
         true
     }
 
