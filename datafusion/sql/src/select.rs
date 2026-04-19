@@ -29,7 +29,9 @@ use crate::utils::{
 
 use datafusion_common::error::DataFusionErrorBuilder;
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
-use datafusion_common::{Column, DFSchema, DFSchemaRef, Dependency, Result, not_impl_err, plan_err};
+use datafusion_common::{
+    Column, DFSchema, DFSchemaRef, Dependency, Result, not_impl_err, plan_err,
+};
 use datafusion_common::{RecursionUnnestOption, UnnestOptions};
 use datafusion_expr::expr::{PlannedReplaceSelectItem, WildcardOptions};
 use datafusion_expr::expr_rewriter::{
@@ -37,8 +39,7 @@ use datafusion_expr::expr_rewriter::{
 };
 use datafusion_expr::select_expr::SelectExpr;
 use datafusion_expr::utils::{
-    expr_as_column_expr, expr_to_columns, find_aggregate_exprs,
-    find_window_exprs,
+    expr_as_column_expr, expr_to_columns, find_aggregate_exprs, find_window_exprs,
 };
 use datafusion_expr::{
     Aggregate, Expr, Filter, GroupingSet, LogicalPlan, LogicalPlanBuilder,
@@ -967,10 +968,8 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         group_by_exprs: &[Expr],
         aggr_exprs: &[Expr],
     ) -> Result<AggregatePlanResult> {
-        let group_by_exprs = self.add_required_group_by_exprs_from_dependencies(
-            input,
-            group_by_exprs,
-        )?;
+        let group_by_exprs =
+            self.add_required_group_by_exprs_from_dependencies(input, group_by_exprs)?;
 
         // create the aggregate plan
         let plan = LogicalPlanBuilder::from(input.clone())
@@ -1196,8 +1195,7 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
                 .all(|n| group_by_field_names.contains(n))
             {
                 for idx in &dependence.target_indices {
-                    let expr =
-                        Expr::Column(Column::from(schema.qualified_field(*idx)));
+                    let expr = Expr::Column(Column::from(schema.qualified_field(*idx)));
                     let expr_name = expr.schema_name().to_string();
                     if !group_by_field_names.contains(&expr_name) {
                         group_by_field_names.push(expr_name);
