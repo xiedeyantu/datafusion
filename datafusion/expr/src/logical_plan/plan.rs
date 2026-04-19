@@ -351,7 +351,6 @@ impl LogicalPlan {
             LogicalPlan::Ddl(ddl) => ddl.schema(),
             LogicalPlan::Unnest(Unnest { schema, .. }) => schema,
             LogicalPlan::RecursiveQuery(RecursiveQuery { static_term, .. }) => {
-                // we take the schema of the static term as the schema of the entire recursive query
                 static_term.schema()
             }
         }
@@ -2402,6 +2401,10 @@ impl SubqueryAlias {
         // no field must share the same column name as this would lead to ambiguity when referencing
         // columns in parent logical nodes.
 
+        // Capture whether the input is a RecursiveQuery before `plan` may be
+        // rebound to a wrapping Projection below.
+        let is_recursive_query = matches!(plan.as_ref(), LogicalPlan::RecursiveQuery(_));
+
         // Compute unique aliases, if any, for each column of the input's schema.
         let aliases = unique_field_aliases(plan.schema().fields());
         let is_projection_needed = aliases.iter().any(Option::is_some);
@@ -2431,7 +2434,14 @@ impl SubqueryAlias {
         // Requalify fields with the new `alias`.
         let fields = plan.schema().fields().clone();
         let meta_data = plan.schema().metadata().clone();
-        let func_dependencies = plan.schema().functional_dependencies().clone();
+        // Recursive queries do not expose the anchor's functional dependencies to
+        // the outer schema — the recursive term can produce rows that violate
+        // those dependencies, so they are intentionally dropped here.
+        let func_dependencies = if is_recursive_query {
+            FunctionalDependencies::empty()
+        } else {
+            plan.schema().functional_dependencies().clone()
+        };
 
         let schema = DFSchema::from_unqualified_fields(fields, meta_data)?;
         let schema = schema.as_arrow();

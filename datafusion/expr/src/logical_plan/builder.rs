@@ -54,10 +54,9 @@ use datafusion_common::display::ToStringifiedPlan;
 use datafusion_common::file_options::file_type::FileType;
 use datafusion_common::metadata::FieldMetadata;
 use datafusion_common::{
-    Column, Constraints, DFSchema, DFSchemaRef, NullEquality, Result, ScalarValue,
-    TableReference, ToDFSchema, UnnestOptions, exec_err,
-    get_target_functional_dependencies, internal_datafusion_err, plan_datafusion_err,
-    plan_err,
+    Column, Constraints, DFSchema, DFSchemaRef, Dependency, NullEquality, Result, ScalarValue,
+    TableReference, ToDFSchema, UnnestOptions, exec_err, internal_datafusion_err,
+    plan_datafusion_err, plan_err,
 };
 use datafusion_expr_common::type_coercion::binary::type_union_resolution;
 
@@ -1853,15 +1852,40 @@ pub fn add_group_by_exprs_from_dependencies(
         .map(|e| e.schema_name().to_string())
         .collect::<Vec<_>>();
 
-    if let Some(target_indices) =
-        get_target_functional_dependencies(schema, &group_by_field_names)
-    {
-        for idx in target_indices {
-            let expr = Expr::Column(Column::from(schema.qualified_field(idx)));
-            let expr_name = expr.schema_name().to_string();
-            if !group_by_field_names.contains(&expr_name) {
-                group_by_field_names.push(expr_name);
-                group_expr.push(expr);
+    let field_names = schema.field_names();
+    for dependence in schema.functional_dependencies().iter() {
+        // SQL UNIQUE constraints (mode == Single) allow multiple NULLs, so a
+        // nullable UNIQUE key on a nullable source column cannot safely be
+        // used to synthesize additional GROUP BY keys. Doing so could split
+        // NULL groups and change aggregate results.
+        // Join-derived dependencies (mode == Multi) represent downgraded PKs
+        // from outer joins and are safe to expand even when nullable.
+        if dependence.nullable
+            && dependence.mode == Dependency::Single
+            && dependence
+                .source_indices
+                .iter()
+                .any(|&source_idx| schema.field(source_idx).is_nullable())
+        {
+            continue;
+        }
+
+        let source_key_names = dependence
+            .source_indices
+            .iter()
+            .map(|idx| &field_names[*idx])
+            .collect::<Vec<_>>();
+        if source_key_names
+            .iter()
+            .all(|source_key_name| group_by_field_names.contains(source_key_name))
+        {
+            for idx in &dependence.target_indices {
+                let expr = Expr::Column(Column::from(schema.qualified_field(*idx)));
+                let expr_name = expr.schema_name().to_string();
+                if !group_by_field_names.contains(&expr_name) {
+                    group_by_field_names.push(expr_name);
+                    group_expr.push(expr);
+                }
             }
         }
     }
@@ -2882,6 +2906,32 @@ mod tests {
         assert_snapshot!(plan, @r"
         Aggregate: groupBy=[[employee_csv.id, employee_csv.state, employee_csv.salary]], aggr=[[sum(employee_csv.salary)]]
           TableScan: employee_csv projection=[id, state, salary]
+        ");
+
+        Ok(())
+    }
+
+    #[test]
+    fn plan_builder_aggregate_does_not_expand_nullable_unique_group_by_exprs()
+    -> Result<()> {
+        let schema = Schema::new(vec![
+            Field::new("id", DataType::Int32, true),
+            Field::new("state", DataType::Utf8, false),
+            Field::new("salary", DataType::Int32, false),
+        ]);
+        let constraints = Constraints::new_unverified(vec![Constraint::Unique(vec![0])]);
+        let table_source = table_source_with_constraints(&schema, constraints);
+
+        let options =
+            LogicalPlanBuilderOptions::new().with_add_implicit_group_by_exprs(true);
+        let plan = LogicalPlanBuilder::scan("employee_csv", table_source, None)?
+            .with_options(options)
+            .aggregate(vec![col("id")], vec![sum(col("salary"))])?
+            .build()?;
+
+        assert_snapshot!(plan, @r"
+        Aggregate: groupBy=[[employee_csv.id]], aggr=[[sum(employee_csv.salary)]]
+          TableScan: employee_csv
         ");
 
         Ok(())

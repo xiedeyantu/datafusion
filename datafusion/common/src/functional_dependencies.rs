@@ -422,7 +422,6 @@ pub fn aggregate_functional_dependencies(
 ) -> FunctionalDependencies {
     let mut aggregate_func_dependencies = vec![];
     let aggr_input_fields = aggr_input_schema.field_names();
-    let aggr_fields = aggr_schema.fields();
     // Association covers the whole table:
     let target_indices = (0..aggr_schema.fields().len()).collect::<Vec<_>>();
     // Get functional dependencies of the schema:
@@ -484,9 +483,12 @@ pub fn aggregate_functional_dependencies(
     if !group_by_expr_names.is_empty() {
         let count = group_by_expr_names.len();
         let source_indices = (0..count).collect::<Vec<_>>();
-        let nullable = source_indices
-            .iter()
-            .any(|idx| aggr_fields[*idx].is_nullable());
+        // Aggregation with GROUP BY always produces unique output rows for
+        // each distinct combination of GROUP BY keys. The nullable flag is
+        // set to false here so that subsequent expansion (e.g. a second
+        // GROUP BY on the aggregate output) is never blocked by source
+        // field nullability.
+        let nullable = false;
         // If GROUP BY expressions do not already act as a determinant:
         if !aggregate_func_dependencies.iter().any(|item| {
             // If `item.source_indices` is a subset of GROUP BY expressions, we shouldn't add
@@ -565,9 +567,17 @@ pub fn get_required_group_by_exprs_indices(
     for FunctionalDependence {
         source_indices,
         target_indices,
+        nullable,
         ..
     } in &dependencies.deps
     {
+        // Skip nullable dependencies: UNIQUE constraints allow NULL values,
+        // and NULLs are not considered equal in SQL, so two rows with NULL in
+        // the source key are NOT in the same group. We therefore cannot use a
+        // nullable FD to eliminate other GROUP BY columns.
+        if *nullable {
+            continue;
+        }
         if source_indices
             .iter()
             .all(|source_idx| groupby_expr_indices.contains(source_idx))

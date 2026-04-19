@@ -29,7 +29,7 @@ use crate::utils::{
 
 use datafusion_common::error::DataFusionErrorBuilder;
 use datafusion_common::tree_node::{TreeNode, TreeNodeRecursion};
-use datafusion_common::{Column, DFSchema, DFSchemaRef, Result, not_impl_err, plan_err};
+use datafusion_common::{Column, DFSchema, DFSchemaRef, Dependency, Result, not_impl_err, plan_err};
 use datafusion_common::{RecursionUnnestOption, UnnestOptions};
 use datafusion_expr::expr::{PlannedReplaceSelectItem, WildcardOptions};
 use datafusion_expr::expr_rewriter::{
@@ -37,7 +37,8 @@ use datafusion_expr::expr_rewriter::{
 };
 use datafusion_expr::select_expr::SelectExpr;
 use datafusion_expr::utils::{
-    expr_as_column_expr, expr_to_columns, find_aggregate_exprs, find_window_exprs,
+    expr_as_column_expr, expr_to_columns, find_aggregate_exprs,
+    find_window_exprs,
 };
 use datafusion_expr::{
     Aggregate, Expr, Filter, GroupingSet, LogicalPlan, LogicalPlanBuilder,
@@ -966,12 +967,15 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
         group_by_exprs: &[Expr],
         aggr_exprs: &[Expr],
     ) -> Result<AggregatePlanResult> {
+        let group_by_exprs = self.add_required_group_by_exprs_from_dependencies(
+            input,
+            group_by_exprs,
+        )?;
+
         // create the aggregate plan
-        let options =
-            LogicalPlanBuilderOptions::new().with_add_implicit_group_by_exprs(true);
         let plan = LogicalPlanBuilder::from(input.clone())
-            .with_options(options)
-            .aggregate(group_by_exprs.to_vec(), aggr_exprs.to_vec())?
+            .with_options(LogicalPlanBuilderOptions::new())
+            .aggregate(group_by_exprs.clone(), aggr_exprs.to_vec())?
             .build()?;
         let group_by_exprs = if let LogicalPlan::Aggregate(agg) = &plan {
             &agg.group_expr
@@ -1136,6 +1140,74 @@ impl<S: ContextProvider> SqlToRel<'_, S> {
             qualify_expr: qualify_expr_post_aggr,
             order_by_exprs: order_by_post_aggr,
         })
+    }
+
+    /// Expand `group_by_exprs` with additional columns that are functionally
+    /// determined by the current GROUP BY keys, using the functional
+    /// dependencies recorded on the input schema.
+    ///
+    /// A dependency is skipped when **all** of the following are true:
+    /// - `nullable = true` — the constraint allows NULLs (i.e. SQL `UNIQUE`,
+    ///   not `PRIMARY KEY`)
+    /// - `mode == Single` — the dependency comes from a single-table scan,
+    ///   not from a join.  Join-derived dependencies (`mode == Multi`) are
+    ///   downgraded PKs and remain safe to expand.
+    /// - At least one source field is nullable in the schema.
+    ///
+    /// Together these conditions identify nullable `UNIQUE` keys on nullable
+    /// columns, where multiple NULLs are permitted and `key → other_cols`
+    /// does not hold for the NULL group.  Expanding such a key would split
+    /// the NULL group and produce incorrect aggregates.
+    fn add_required_group_by_exprs_from_dependencies(
+        &self,
+        input: &LogicalPlan,
+        group_by_exprs: &[Expr],
+    ) -> Result<Vec<Expr>> {
+        let schema = input.schema();
+        let field_names = schema.field_names();
+        let mut result = group_by_exprs.to_vec();
+        let mut group_by_field_names: Vec<String> =
+            result.iter().map(|e| e.schema_name().to_string()).collect();
+
+        for dependence in schema.functional_dependencies().iter() {
+            // SQL UNIQUE constraints (mode == Single) allow multiple NULLs,
+            // so a nullable UNIQUE key on a nullable source column cannot
+            // safely synthesise additional GROUP BY keys — it could split
+            // NULL groups and change aggregate results.
+            // Join-derived dependencies (mode == Multi) represent downgraded
+            // PKs from outer joins and are safe to expand even when nullable.
+            if dependence.nullable
+                && dependence.mode == Dependency::Single
+                && dependence
+                    .source_indices
+                    .iter()
+                    .any(|&source_idx| schema.field(source_idx).is_nullable())
+            {
+                continue;
+            }
+
+            let source_key_names = dependence
+                .source_indices
+                .iter()
+                .map(|idx| &field_names[*idx])
+                .collect::<Vec<_>>();
+            if source_key_names
+                .iter()
+                .all(|n| group_by_field_names.contains(n))
+            {
+                for idx in &dependence.target_indices {
+                    let expr =
+                        Expr::Column(Column::from(schema.qualified_field(*idx)));
+                    let expr_name = expr.schema_name().to_string();
+                    if !group_by_field_names.contains(&expr_name) {
+                        group_by_field_names.push(expr_name);
+                        result.push(expr);
+                    }
+                }
+            }
+        }
+
+        Ok(result)
     }
 
     // If the projection is done over a named window, that window
