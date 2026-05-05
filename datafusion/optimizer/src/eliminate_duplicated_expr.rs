@@ -214,7 +214,8 @@ mod tests {
             Field::new("id", DataType::Int32, false),
             Field::new("val", DataType::Int32, false),
         ]);
-        let constraints = Constraints::new_unverified(vec![Constraint::PrimaryKey(vec![0])]);
+        let constraints =
+            Constraints::new_unverified(vec![Constraint::PrimaryKey(vec![0])]);
         let source = table_source_with_constraints(&schema, constraints);
         let plan = LogicalPlanBuilder::scan("t", source, None)?
             .sort_by(vec![col("t.id"), col("t.val")])?
