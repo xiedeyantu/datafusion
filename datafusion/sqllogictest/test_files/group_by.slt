@@ -3565,8 +3565,9 @@ SELECT r.sn, r.amount, SUM(r.amount)
   GROUP BY r.sn
 ORDER BY r.sn
 
-# left semi join should propagate constraint of left side as is.
-query IRR
+# left semi join with a nullable UNIQUE key cannot safely propagate the
+# constraint for expansion, because UNIQUE allows multiple NULLs.
+statement error DataFusion error: Error during planning: Column in SELECT must be in GROUP BY or an aggregate function: While expanding wildcard, column "l\.amount" must appear in the GROUP BY clause or must be part of an aggregate function, currently only "l\.sn, sum\(l\.amount\)" appears in the SELECT clause satisfies this requirement
 SELECT l.sn, l.amount, SUM(l.amount)
   FROM (SELECT *
     FROM sales_global_with_unique as l
@@ -3574,15 +3575,10 @@ SELECT l.sn, l.amount, SUM(l.amount)
     ON l.amount >= r.amount + 10)
   GROUP BY l.sn
 ORDER BY l.sn
-----
-1 50 50
-2 75 75
-3 200 200
-4 100 100
-NULL 100 100
 
-# Similarly, left anti join should propagate constraint of left side as is.
-query IRR
+# Similarly, left anti join with a nullable UNIQUE key cannot safely propagate
+# the constraint for expansion.
+statement error DataFusion error: Error during planning: Column in SELECT must be in GROUP BY or an aggregate function: While expanding wildcard, column "l\.amount" must appear in the GROUP BY clause or must be part of an aggregate function, currently only "l\.sn, sum\(l\.amount\)" appears in the SELECT clause satisfies this requirement
 SELECT l.sn, l.amount, SUM(l.amount)
   FROM (SELECT *
     FROM sales_global_with_unique as l
@@ -3590,8 +3586,6 @@ SELECT l.sn, l.amount, SUM(l.amount)
     ON l.amount >= r.amount + 10)
   GROUP BY l.sn
 ORDER BY l.sn
-----
-0 30 30
 
 # Should support grouping by list column
 query ?I
@@ -5641,3 +5635,32 @@ set datafusion.execution.target_partitions = 4;
 
 statement count 0
 drop table t;
+
+# Test that GROUP BY with a UNIQUE constraint does not incorrectly collapse
+# NULL rows. UNIQUE allows multiple NULLs (NULLs are not equal in SQL), so
+# a UNIQUE column cannot be used to eliminate other GROUP BY columns.
+# Regression test for https://github.com/apache/datafusion/issues/21507
+
+statement ok
+CREATE TABLE t_unique_null(a INT, b INT, c INT, UNIQUE(a));
+
+statement ok
+INSERT INTO t_unique_null VALUES (1, 10, 100), (NULL, 20, 200), (NULL, 30, 300);
+
+# The two NULL rows must stay in separate groups (grouped by b as well).
+query II rowsort
+SELECT a, SUM(c) AS total FROM t_unique_null GROUP BY a, b;
+----
+1 100
+NULL 200
+NULL 300
+
+# GROUP BY on the UNIQUE column alone must still merge the NULL rows into one group.
+query II rowsort
+SELECT a, SUM(c) AS total FROM t_unique_null GROUP BY a;
+----
+1 100
+NULL 500
+
+statement ok
+DROP TABLE t_unique_null;
