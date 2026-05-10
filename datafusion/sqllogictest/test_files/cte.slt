@@ -1343,6 +1343,10 @@ WITH RECURSIVE nodes AS (
     FROM nodes
     WHERE nodes.id = 2
 )
+SELECT id, val FROM nodes WHERE id = 1
+----
+1 100
+1 300
 
 statement ok
 DROP TABLE pk_table;
