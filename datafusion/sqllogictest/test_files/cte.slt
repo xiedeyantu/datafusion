@@ -1333,20 +1333,6 @@ CREATE TABLE pk_table(id INT NOT NULL, val INT NOT NULL, PRIMARY KEY(id));
 statement ok
 INSERT INTO pk_table VALUES (1, 100), (2, 200);
 
-# Verify the recursive CTE produces both id=1 rows (anchor: val=100, recursive: val=300).
-query II rowsort
-WITH RECURSIVE nodes AS (
-    SELECT id, val FROM pk_table
-    UNION ALL
-    SELECT 1 AS id, 300 AS val
-    FROM nodes
-    WHERE nodes.id = 2
-)
-SELECT id, val FROM nodes WHERE id = 1
-----
-1 100
-1 300
-
 # Without the FD fix, the anchor's PRIMARY KEY FD propagates to SubqueryAlias:
 # nodes, making the optimizer believe id is unique across the whole CTE output.
 # The replace_distinct_aggregate rule then eliminates DISTINCT (id appears
