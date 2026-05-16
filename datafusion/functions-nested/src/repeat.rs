@@ -175,9 +175,10 @@ fn general_repeat<O: OffsetSizeTrait>(
     array: &ArrayRef,
     count_array: &Int64Array,
 ) -> Result<ArrayRef> {
-    let total_repeated_values: usize = (0..count_array.len())
-        .map(|i| get_count_with_validity(count_array, i))
-        .sum();
+    let total_repeated_values = checked_sum_counts(
+        (0..count_array.len()).map(|i| get_count_with_validity(count_array, i)),
+        "array_repeat: total repeated values overflowed usize",
+    )?;
 
     let mut take_indices = Vec::with_capacity(total_repeated_values);
     let mut offsets = Vec::with_capacity(count_array.len() + 1);
@@ -238,11 +239,24 @@ fn general_list_repeat<O: OffsetSizeTrait>(
     for i in 0..count_array.len() {
         let count = get_count_with_validity(count_array, i);
         if count > 0 {
-            outer_total += count;
+            outer_total = outer_total.checked_add(count).ok_or_else(|| {
+                DataFusionError::Execution(
+                    "array_repeat: outer total overflowed usize".to_string(),
+                )
+            })?;
             if list_array.is_valid(i) {
                 let len = list_offsets[i + 1].to_usize().unwrap()
                     - list_offsets[i].to_usize().unwrap();
-                inner_total += len * count;
+                let repeated_len = len.checked_mul(count).ok_or_else(|| {
+                    DataFusionError::Execution(
+                        "array_repeat: inner total overflowed usize".to_string(),
+                    )
+                })?;
+                inner_total = inner_total.checked_add(repeated_len).ok_or_else(|| {
+                    DataFusionError::Execution(
+                        "array_repeat: inner total overflowed usize".to_string(),
+                    )
+                })?;
             }
         }
     }
@@ -319,4 +333,15 @@ fn get_count_with_validity(count_array: &Int64Array, idx: usize) -> usize {
         let c = count_array.value(idx);
         if c > 0 { c as usize } else { 0 }
     }
+}
+
+fn checked_sum_counts(
+    counts: impl IntoIterator<Item = usize>,
+    overflow_message: &'static str,
+) -> Result<usize> {
+    counts.into_iter().try_fold(0usize, |total, count| {
+        total.checked_add(count).ok_or_else(|| {
+            DataFusionError::Execution(overflow_message.to_string())
+        })
+    })
 }
