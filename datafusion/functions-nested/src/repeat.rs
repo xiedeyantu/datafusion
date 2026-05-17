@@ -340,8 +340,8 @@ fn checked_sum_counts(
     overflow_message: &'static str,
 ) -> Result<usize> {
     counts.into_iter().try_fold(0usize, |total, count| {
-        total.checked_add(count).ok_or_else(|| {
-            DataFusionError::Execution(overflow_message.to_string())
-        })
+        total
+            .checked_add(count)
+            .ok_or_else(|| DataFusionError::Execution(overflow_message.to_string()))
     })
 }
